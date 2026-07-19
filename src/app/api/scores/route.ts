@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { getBoardForDate, isValidDateKey, todayKey } from "@/lib/jeopardy";
+import { getBoardForDate, isValidDateKey, todayKey, totalClueCount } from "@/lib/jeopardy";
 import { percentileFor, submitScore, topScores } from "@/lib/scores";
+import { answeredCluesForDate, summarize } from "@/lib/answers";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { authAdmin } from "@/lib/firebaseAdmin";
 
-// Sign-in is required to submit a score (not to play) — this is the identity
-// the one-submission-per-day rule in submitScore() keys on. An invalid or
+// Sign-in is required to submit — this is the identity the
+// one-submission-per-day rule in submitScore() keys on. An invalid or
 // missing token means POST returns 401 rather than falling back to anonymous.
 async function uidFromRequest(request: Request): Promise<string | undefined> {
   const header = request.headers.get("authorization") ?? "";
@@ -20,14 +21,7 @@ async function uidFromRequest(request: Request): Promise<string | undefined> {
 
 export const dynamic = "force-dynamic";
 
-// Generous safety cap, not a tight gameplay bound: face values alone total
-// 18,000 (round 1) + 36,000 (round 2) = 54,000, but a Daily Double wager can
-// exceed its clue's face value up to the player's current score, so the true
-// ceiling depends on play. This just catches obviously-fabricated numbers.
-const MAX_SCORE = 200_000;
 const MAX_DURATION_MS = 6 * 60 * 60 * 1000;
-// Two 30-clue rounds.
-const TOTAL_CLUES = 60;
 
 export async function GET(request: Request) {
   if (!rateLimit(`scores-get:${clientIp(request)}`, 30, 60_000)) {
@@ -49,17 +43,16 @@ interface SubmitRequest {
   date?: string;
   boardId?: string;
   name?: string;
-  score?: number;
-  correct?: number;
-  wrong?: number;
-  passed?: number;
   durationMs?: number;
 }
 
-function isCount(n: unknown): n is number {
-  return typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= TOTAL_CLUES;
-}
-
+// Score, and the correct/wrong/passed counts, are no longer taken from the
+// client — they're computed here from this account's server-recorded
+// answeredClues (see src/lib/answers.ts). That's what makes the leaderboard
+// number trustworthy: it's a sum of judgments the server itself made, not an
+// assertion the client is free to fabricate. Duration is still client-timed
+// (only affects tie-breaking/display, not the score), so it's kept
+// plausibility-checked rather than reconstructed from judgedAt timestamps.
 export async function POST(request: Request) {
   if (!rateLimit(`scores-post:${clientIp(request)}`, 5, 60_000)) {
     return NextResponse.json({ error: "Slow down a little." }, { status: 429 });
@@ -72,27 +65,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const { date, boardId, score, correct, wrong, passed, durationMs } = body;
+  const { date, boardId, durationMs } = body;
   const name = (body.name ?? "").replace(/\s+/g, " ").trim().slice(0, 24);
 
-  if (!date || !isValidDateKey(date) || !boardId || name.length === 0) {
-    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
-  }
   if (
-    typeof score !== "number" ||
-    !Number.isInteger(score) ||
-    Math.abs(score) > MAX_SCORE ||
-    score % 100 !== 0 || // face values are multiples of 200/400; wagers are multiples of 100
-    !isCount(correct) ||
-    !isCount(wrong) ||
-    !isCount(passed) ||
-    correct + wrong + passed > TOTAL_CLUES ||
+    !date ||
+    !isValidDateKey(date) ||
+    !boardId ||
+    name.length === 0 ||
     typeof durationMs !== "number" ||
     !Number.isInteger(durationMs) ||
     durationMs < 0 ||
     durationMs > MAX_DURATION_MS
   ) {
-    return NextResponse.json({ error: "That score doesn't look right." }, { status: 400 });
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
   try {
@@ -109,9 +95,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Sign in to post your score." }, { status: 401 });
     }
 
-    await submitScore(date, { name, score, correct, wrong, passed, durationMs, uid });
-    const [scores, stats] = await Promise.all([topScores(date), percentileFor(date, score)]);
-    return NextResponse.json({ ok: true, scores, stats });
+    const answered = await answeredCluesForDate(uid, date);
+    const total = totalClueCount(board);
+    if (answered.length < total) {
+      return NextResponse.json(
+        { error: "You haven't finished today's board yet." },
+        { status: 400 }
+      );
+    }
+
+    const totals = summarize(answered);
+    await submitScore(date, {
+      name,
+      score: totals.score,
+      correct: totals.correct,
+      wrong: totals.wrong,
+      passed: totals.passed,
+      durationMs,
+      uid,
+    });
+    const [scores, stats] = await Promise.all([topScores(date), percentileFor(date, totals.score)]);
+    return NextResponse.json({ ok: true, scores, stats, final: totals });
   } catch (error) {
     if (error instanceof Error && error.message === "already-submitted") {
       return NextResponse.json({ error: "already-submitted" }, { status: 409 });

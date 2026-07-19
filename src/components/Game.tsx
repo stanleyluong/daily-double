@@ -232,41 +232,56 @@ export default function Game({ date }: { date?: string }) {
 
   const submitAnswer = useCallback(
     async (reveal: boolean) => {
-      if (!board || !active) return;
+      if (!board || !active || !user) return;
       const answer = input.trim();
       if (!reveal && !answer) return;
       setPhase("judging");
       try {
         const res = await fetch("/api/judge", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${await user.getIdToken()}`,
+          },
           body: JSON.stringify(
             reveal
               ? { date: board.date, boardId: board.boardId, clueId: active.id, reveal: true }
-              : { date: board.date, boardId: board.boardId, clueId: active.id, answer }
+              : {
+                  date: board.date,
+                  boardId: board.boardId,
+                  clueId: active.id,
+                  answer,
+                  wager: active.dailyDouble ? active.wager : undefined,
+                }
           ),
         });
         const data = await res.json();
-        if (res.status === 409) return handleBoardChanged();
+        if (data.error === "board-changed") return handleBoardChanged();
         if (!res.ok) throw new Error(data.error ?? "Judging failed.");
-        const pointValue = active.dailyDouble && active.wager ? active.wager : active.value;
+        // outcome and pointValue come from the server now, not client
+        // computation — for a Daily Double the server may have clamped the
+        // wager, and for an already-recorded clue this is the cached verdict.
         recordResult(active, {
-          outcome: reveal ? "passed" : data.correct ? "correct" : "wrong",
+          outcome: data.outcome,
           correctAnswer: data.correctAnswer,
           comment: data.comment,
           playerAnswer: reveal ? undefined : answer,
-          pointValue,
+          pointValue: data.pointValue,
         });
       } catch (error) {
         setPhase("answering");
         alert(error instanceof Error ? error.message : "Judging failed — try again.");
       }
     },
-    [board, active, input, recordResult, handleBoardChanged]
+    [board, active, user, input, recordResult, handleBoardChanged]
   );
 
   const openClue = (clue: PublicClue, categoryTitle: string) => {
     if (results[clue.id]) return;
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
     if (metaRef.current.startedAt === null) metaRef.current.startedAt = Date.now();
     setActive({ ...clue, categoryTitle });
     setInput("");
@@ -336,14 +351,13 @@ export default function Game({ date }: { date?: string }) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${await user.getIdToken()}`,
         },
+        // score/correct/wrong/passed are deliberately NOT sent — the server
+        // computes them from this account's recorded answeredClues, so a
+        // player can't just assert a number here.
         body: JSON.stringify({
           date: board.date,
           boardId: board.boardId,
           name,
-          score,
-          correct: counts.correct,
-          wrong: counts.wrong,
-          passed: counts.passed,
           durationMs: metaRef.current.durationMs ?? 0,
         }),
       });
@@ -365,6 +379,13 @@ export default function Game({ date }: { date?: string }) {
       setSubmitted(true);
       setLeaderboard((data.scores as ScoreRow[]) ?? null);
       setStats((data.stats as PercentileStats) ?? null);
+      // Reconcile the displayed score/counts with the server's authoritative
+      // final numbers — normally identical to the local tally, but this is
+      // the value that's actually on the leaderboard.
+      if (data.final) {
+        setScore(data.final.score);
+        persist(results, data.final.score, roundIndex);
+      }
       persist(results, score, roundIndex);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Couldn't save your score.");

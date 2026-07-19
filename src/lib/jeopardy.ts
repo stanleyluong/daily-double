@@ -358,6 +358,18 @@ export function findClue(
   return null;
 }
 
+export function totalClueCount(board: Board): number {
+  return board.rounds.reduce(
+    (n, round) => n + round.categories.reduce((m, cat) => m + cat.clues.length, 0),
+    0
+  );
+}
+
+export function roundTopValue(board: Board, roundIndex: number): number {
+  const round = board.rounds[roundIndex];
+  return round ? Math.max(...round.categories.flatMap((c) => c.clues.map((cl) => cl.value))) : 0;
+}
+
 export async function judgeAnswer(
   category: Category,
   clue: Clue,

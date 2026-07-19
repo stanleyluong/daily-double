@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
-import { findClue, getBoardForDate, isValidDateKey, judgeAnswer, todayKey } from "@/lib/jeopardy";
+import {
+  findClue,
+  getBoardForDate,
+  isValidDateKey,
+  judgeAnswer,
+  roundTopValue,
+  todayKey,
+} from "@/lib/jeopardy";
+import { getAnsweredClue, recordAnsweredClue, scoreSoFar } from "@/lib/answers";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
+import { authAdmin } from "@/lib/firebaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -11,11 +20,31 @@ interface JudgeRequest {
   clueId?: string;
   answer?: string;
   reveal?: boolean;
+  wager?: number; // only meaningful for a Daily Double clue; server clamps it
+}
+
+async function requireUid(request: Request): Promise<string | null> {
+  const header = request.headers.get("authorization") ?? "";
+  const idToken = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!idToken) return null;
+  try {
+    return (await authAdmin().verifyIdToken(idToken)).uid;
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(request: Request) {
   if (!rateLimit(`judge:${clientIp(request)}`, 30, 60_000)) {
     return NextResponse.json({ error: "Slow down a little." }, { status: 429 });
+  }
+
+  // Sign-in is required to play, not just to submit — this is what closes
+  // the "learn the answers anonymously, then replay signed in" loophole.
+  // Anonymous play has no identity for the per-clue record below to key on.
+  const uid = await requireUid(request);
+  if (!uid) {
+    return NextResponse.json({ error: "Sign in to play." }, { status: 401 });
   }
 
   let body: JudgeRequest;
@@ -25,7 +54,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const { boardId, clueId, answer, reveal } = body;
+  const { boardId, clueId, answer, reveal, wager } = body;
   const date = body.date ?? todayKey();
   if (!isValidDateKey(date) || !boardId || !clueId || (!reveal && typeof answer !== "string")) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
@@ -48,20 +77,60 @@ export async function POST(request: Request) {
     if (!found) {
       return NextResponse.json({ error: "Unknown clue." }, { status: 404 });
     }
+    const { clue, category, roundIndex } = found;
 
-    if (reveal) {
+    // Idempotent: a clue already judged for this account+date returns the
+    // recorded verdict — right, wrong, or revealed — instead of judging
+    // again. Wiping localStorage and reopening it changes nothing.
+    const cached = await getAnsweredClue(uid, date, clueId);
+    if (cached) {
       return NextResponse.json({
-        correct: false,
-        correctAnswer: found.clue.answer,
-        comment: "",
+        outcome: cached.outcome,
+        correctAnswer: cached.correctAnswer,
+        comment: cached.comment,
+        pointValue: cached.pointValue,
+        cached: true,
       });
     }
 
-    const verdict = await judgeAnswer(found.category, found.clue, answer!.trim());
-    return NextResponse.json({
-      correct: verdict.correct,
-      correctAnswer: found.clue.answer,
+    let pointValue = clue.value;
+    if (clue.dailyDouble) {
+      const earnedSoFar = await scoreSoFar(uid, date);
+      const maxWager = Math.max(earnedSoFar, roundTopValue(board, roundIndex));
+      const requested = typeof wager === "number" && Number.isFinite(wager) ? Math.round(wager) : 5;
+      pointValue = Math.min(maxWager, Math.max(5, requested));
+    }
+
+    if (reveal) {
+      const recorded = await recordAnsweredClue(uid, date, clueId, {
+        outcome: "passed",
+        correctAnswer: clue.answer,
+        comment: "",
+        pointValue,
+      });
+      return NextResponse.json({
+        outcome: recorded.outcome,
+        correctAnswer: recorded.correctAnswer,
+        comment: recorded.comment,
+        pointValue: recorded.pointValue,
+        cached: false,
+      });
+    }
+
+    const verdict = await judgeAnswer(category, clue, answer!.trim());
+    const recorded = await recordAnsweredClue(uid, date, clueId, {
+      outcome: verdict.correct ? "correct" : "wrong",
+      correctAnswer: clue.answer,
       comment: verdict.comment,
+      pointValue,
+      playerAnswer: answer!.trim(),
+    });
+    return NextResponse.json({
+      outcome: recorded.outcome,
+      correctAnswer: recorded.correctAnswer,
+      comment: recorded.comment,
+      pointValue: recorded.pointValue,
+      cached: false,
     });
   } catch (error) {
     console.error("Judging failed:", error);
