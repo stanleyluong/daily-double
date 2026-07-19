@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBoardForDate, isValidDateKey, todayKey } from "@/lib/jeopardy";
-import { submitScore, topScores } from "@/lib/scores";
+import { percentileFor, submitScore, topScores } from "@/lib/scores";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
@@ -85,7 +85,8 @@ export async function POST(request: Request) {
     }
 
     await submitScore(date, { name, score, correct, wrong, passed, durationMs });
-    return NextResponse.json({ ok: true, scores: await topScores(date) });
+    const [scores, stats] = await Promise.all([topScores(date), percentileFor(date, score)]);
+    return NextResponse.json({ ok: true, scores, stats });
   } catch (error) {
     console.error("Score submit failed:", error);
     return NextResponse.json({ error: "Couldn't save your score." }, { status: 500 });

@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PublicBoard, PublicClue } from "@/lib/jeopardy";
-import type { ScoreRow } from "@/lib/scores";
+import type { PercentileStats, ScoreRow } from "@/lib/scores";
+import { formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
+import PercentileMeter from "@/components/PercentileMeter";
 
 type Outcome = "correct" | "wrong" | "passed";
 
@@ -51,17 +54,6 @@ function loadSaved(date: string): SavedGame | null {
   }
 }
 
-function formatMoney(n: number): string {
-  return `${n < 0 ? "−" : ""}$${Math.abs(n).toLocaleString()}`;
-}
-
-function formatDuration(ms: number): string {
-  const totalSec = Math.max(0, Math.round(ms / 1000));
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
 export default function Game({ date }: { date?: string }) {
   const [board, setBoard] = useState<PublicBoard | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -79,6 +71,7 @@ export default function Game({ date }: { date?: string }) {
   const [playerName, setPlayerName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [leaderboard, setLeaderboard] = useState<ScoreRow[] | null>(null);
+  const [stats, setStats] = useState<PercentileStats | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // Timer + submission flags live in a ref so persist() never sees stale state.
   const metaRef = useRef<{ startedAt: number | null; durationMs: number | null; submitted: boolean }>({
@@ -297,6 +290,7 @@ export default function Game({ date }: { date?: string }) {
       metaRef.current.submitted = true;
       setSubmitted(true);
       setLeaderboard((data.scores as ScoreRow[]) ?? null);
+      setStats((data.stats as PercentileStats) ?? null);
       persist(results, score);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Couldn't save your score.");
@@ -383,14 +377,7 @@ export default function Game({ date }: { date?: string }) {
     <div className="w-full max-w-5xl mx-auto">
       {/* Scoreboard */}
       <div className="flex items-baseline justify-between mb-4 px-1">
-        <p className="text-sm text-blue-200/70">
-          {new Date(`${board.date}T12:00:00`).toLocaleDateString("en-US", {
-            weekday: "long",
-            month: "long",
-            day: "numeric",
-            year: "numeric",
-          })}
-        </p>
+        <p className="text-sm text-blue-200/70">{formatBoardDate(board.date)}</p>
         <p className="font-display text-3xl tracking-wide">
           <span className={score < 0 ? "text-red-400" : "text-gold"}>{formatMoney(score)}</span>
           <span className="text-blue-200/50 text-lg ml-3">
@@ -499,13 +486,31 @@ export default function Game({ date }: { date?: string }) {
             </form>
           )}
           {submitted && (
-            <p className="text-center text-green-400/90 mb-6">Score posted to the leaderboard.</p>
+            <div className="flex flex-col items-center gap-1 mb-6">
+              <p className="text-green-400/90">Score posted to the leaderboard.</p>
+              {stats && (
+                <PercentileMeter
+                  fillFraction={stats.fillFraction}
+                  topPercent={stats.topPercent}
+                  isFirst={stats.isFirst}
+                  isSolo={stats.isSolo}
+                />
+              )}
+            </div>
           )}
 
           {/* Leaderboard */}
           <div className="max-w-md mx-auto">
             <p className="font-display tracking-wider text-gold uppercase text-center mb-2">
               Leaderboard · {board.date}
+            </p>
+            <p className="text-center mb-3">
+              <Link
+                href={`/boards/${board.date}/scores`}
+                className="text-xs text-gold/70 hover:text-gold underline"
+              >
+                See full leaderboard →
+              </Link>
             </p>
             {leaderboard === null ? (
               <p className="text-center text-blue-200/50">Loading scores…</p>

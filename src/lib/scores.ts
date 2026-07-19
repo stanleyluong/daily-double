@@ -41,13 +41,14 @@ export async function submitScore(date: string, entry: NewScore): Promise<void> 
 
 export async function topScores(date: string, limit = 20): Promise<ScoreRow[]> {
   // Single-field orderBy avoids needing a composite index; ties on score are
-  // broken by completion time in code.
+  // broken by completion time in code. Firestore's cap is limit, not 50 — the
+  // full-leaderboard page needs more than the mini-leaderboard's 20.
   const snap = await db()
     .collection(BOARDS)
     .doc(date)
     .collection("scores")
     .orderBy("score", "desc")
-    .limit(50)
+    .limit(limit)
     .get();
 
   const rows: ScoreRow[] = snap.docs.map((doc) => {
@@ -65,5 +66,38 @@ export async function topScores(date: string, limit = 20): Promise<ScoreRow[]> {
   });
 
   rows.sort((a, b) => b.score - a.score || a.durationMs - b.durationMs);
-  return rows.slice(0, limit);
+  return rows;
+}
+
+export interface PercentileStats {
+  total: number;
+  beatenBy: number; // players who scored strictly higher than you
+  fillFraction: number; // fraction of the field at or above your rank — drives the meter
+  topPercent: number; // "Top N%" — clamped to [1, 99] for display
+  isFirst: boolean; // nobody beat you
+  isSolo: boolean; // you're the only player so far today
+}
+
+// Called right after submitScore, so `total` includes the just-inserted row.
+// Two cheap aggregate-count queries — no document reads.
+export async function percentileFor(date: string, score: number): Promise<PercentileStats> {
+  const scoresRef = db().collection(BOARDS).doc(date).collection("scores");
+  const [totalSnap, betterSnap] = await Promise.all([
+    scoresRef.count().get(),
+    scoresRef.where("score", ">", score).count().get(),
+  ]);
+  const total = totalSnap.data().count;
+  const beatenBy = betterSnap.data().count;
+
+  if (total <= 1) {
+    return { total, beatenBy: 0, fillFraction: 1, topPercent: 1, isFirst: true, isSolo: true };
+  }
+  return {
+    total,
+    beatenBy,
+    fillFraction: (total - beatenBy) / total,
+    topPercent: Math.min(99, Math.max(1, Math.round((beatenBy / total) * 100))),
+    isFirst: beatenBy === 0,
+    isSolo: false,
+  };
 }

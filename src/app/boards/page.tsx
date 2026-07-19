@@ -47,11 +47,11 @@ export default async function BoardsPage() {
         ) : (
           <ul className="space-y-3">
             {boards.map((b) => (
-              <li key={b.date}>
-                <Link
-                  href={b.date === today ? "/" : `/boards/${b.date}`}
-                  className="block bg-board-deep/60 border border-board hover:border-gold/50 rounded-lg p-4 transition-colors"
-                >
+              <li
+                key={b.date}
+                className="bg-board-deep/60 border border-board hover:border-gold/50 rounded-lg p-4 transition-colors"
+              >
+                <Link href={b.date === today ? "/" : `/boards/${b.date}`} className="block">
                   <div className="flex items-baseline justify-between gap-3">
                     <p className="font-display text-xl tracking-wide text-gold">
                       {formatDate(b.date)}
@@ -72,6 +72,12 @@ export default async function BoardsPage() {
                       {b.categoryTitles.join(" · ")}
                     </p>
                   )}
+                </Link>
+                <Link
+                  href={`/boards/${b.date}/scores`}
+                  className="inline-block mt-2 text-xs text-gold/70 hover:text-gold underline"
+                >
+                  All scores for this date →
                 </Link>
               </li>
             ))}
