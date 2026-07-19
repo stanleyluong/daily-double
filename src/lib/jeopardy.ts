@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { unstable_cache } from "next/cache";
+import { FieldValue } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
+import { db } from "@/lib/firebaseAdmin";
 
 const MODEL = "claude-opus-4-8";
 
@@ -185,12 +186,77 @@ export function todayKey(): string {
   }).format(new Date());
 }
 
-const cachedBoard = unstable_cache(async (date: string) => generateBoard(date), ["daily-double-board"], {
-  revalidate: 60 * 60 * 30, // > 24h so the cache never expires mid-day; the date key rolls first
-});
+export function isValidDateKey(date: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(date);
+}
 
-export async function getDailyBoard(): Promise<Board> {
-  return cachedBoard(todayKey());
+const BOARDS = "jeopardyBoards";
+
+// Boards are immutable once written, so a per-instance memo is safe and keeps
+// judge calls from re-reading Firestore on every answer.
+const memo = new Map<string, Board>();
+
+function boardFromDoc(data: FirebaseFirestore.DocumentData): Board {
+  return { boardId: data.boardId, date: data.date, categories: data.categories };
+}
+
+// Returns the board for a date: from memo, then Firestore. Only today's board
+// is generated on demand — a past date with no stored board never existed.
+export async function getBoardForDate(date: string): Promise<Board | null> {
+  const cached = memo.get(date);
+  if (cached) return cached;
+
+  const ref = db().collection(BOARDS).doc(date);
+  const snap = await ref.get();
+  if (snap.exists) {
+    const board = boardFromDoc(snap.data()!);
+    memo.set(date, board);
+    return board;
+  }
+
+  if (date !== todayKey()) return null;
+
+  const board = await generateBoard(date);
+  try {
+    await ref.create({
+      boardId: board.boardId,
+      date: board.date,
+      categories: board.categories,
+      categoryTitles: board.categories.map((c) => c.title),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  } catch {
+    // Lost a concurrent-generation race — the first writer's board is canonical.
+    const existing = await ref.get();
+    if (!existing.exists) throw new Error("Failed to save the generated board");
+    const winner = boardFromDoc(existing.data()!);
+    memo.set(date, winner);
+    return winner;
+  }
+  memo.set(date, board);
+  return board;
+}
+
+export interface BoardSummary {
+  date: string;
+  categoryTitles: string[];
+  topScore: { name: string; score: number } | null;
+}
+
+export async function listBoards(): Promise<BoardSummary[]> {
+  // No orderBy: combining orderBy(documentId) with a projection (.select())
+  // requires a composite index Firestore won't auto-create. The collection
+  // grows by one doc/day, so fetching and sorting client-side is cheap for
+  // the foreseeable future.
+  const snap = await db().collection(BOARDS).select("categoryTitles", "topScore").get();
+  return snap.docs
+    .map((doc) => ({
+      date: doc.id,
+      categoryTitles: (doc.get("categoryTitles") as string[] | undefined) ?? [],
+      topScore: (doc.get("topScore") as { name: string; score: number } | undefined) ?? null,
+    }))
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .slice(0, 120);
 }
 
 export function toPublicBoard(board: Board): PublicBoard {

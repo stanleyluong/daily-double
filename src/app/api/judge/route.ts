@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { findClue, getDailyBoard, judgeAnswer } from "@/lib/jeopardy";
+import { findClue, getBoardForDate, isValidDateKey, judgeAnswer, todayKey } from "@/lib/jeopardy";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 interface JudgeRequest {
+  date?: string;
   boardId?: string;
   clueId?: string;
   answer?: string;
@@ -25,7 +26,8 @@ export async function POST(request: Request) {
   }
 
   const { boardId, clueId, answer, reveal } = body;
-  if (!boardId || !clueId || (!reveal && typeof answer !== "string")) {
+  const date = body.date ?? todayKey();
+  if (!isValidDateKey(date) || !boardId || !clueId || (!reveal && typeof answer !== "string")) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
   if (typeof answer === "string" && answer.length > 200) {
@@ -33,10 +35,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const board = await getDailyBoard();
+    const board = await getBoardForDate(date);
+    if (!board) {
+      return NextResponse.json({ error: "No board exists for that date." }, { status: 404 });
+    }
     if (board.boardId !== boardId) {
-      // The cached board was regenerated (cache eviction / new day) since this
-      // client loaded it — their clue IDs no longer mean anything.
+      // The client is holding a board the server no longer recognizes.
       return NextResponse.json({ error: "board-changed" }, { status: 409 });
     }
 

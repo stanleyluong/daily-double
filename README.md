@@ -6,22 +6,29 @@ too (leniently, the way a human host would).
 
 ## How it works
 
-- **Daily board, cached.** `GET /api/board` returns today's board. The first request of the day
-  generates it — one quick Claude call picks 6 categories, then 6 parallel calls write 5 clues
-  each — and the result is cached in Next.js's data cache (`unstable_cache`) keyed by the date
-  (US Pacific). Every visitor plays the same board, so generation cost is ~7 small API calls per
-  day regardless of traffic.
+- **Daily board, stored in Firestore.** `GET /api/board` returns the board for a date (today by
+  default). The first request of the day generates it — one quick Claude call picks 6
+  categories, then 6 parallel calls write 5 clues each — and saves it to
+  `jeopardyBoards/{date}` via the Firebase Admin SDK. Every visitor plays the same board, so
+  generation cost is ~7 small API calls per day regardless of traffic, and past boards stay
+  playable forever.
 - **Answers never reach the browser.** The client gets clues and dollar values only. Judging
-  happens server-side: `POST /api/judge` looks up the answer in the cached board and asks
+  happens server-side: `POST /api/judge` looks up the answer in the stored board and asks
   Claude for a lenient ruling plus a one-line quip.
+- **Leaderboards.** When a game ends, the player can post a name; `POST /api/scores` validates
+  the payload and records name, score, right/wrong/passed counts, and completion time under
+  `jeopardyBoards/{date}/scores`, keeping a denormalized `topScore` on the board doc for the
+  archive list. Scores are ranked by score, ties broken by completion time.
+- **Archive.** `/boards` lists every stored board (categories + top scorer); `/boards/[date]`
+  replays one.
 - **Progress persists locally.** Score and answered clues are stored in `localStorage`, keyed to
-  the board, so a reload resumes the same game.
+  the board's date, so a reload resumes the same game.
 - Model: `claude-opus-4-8` with structured outputs (JSON schema) for boards and rulings.
 
 ## Local development
 
 ```sh
-cp .env.example .env.local   # add your real ANTHROPIC_API_KEY
+cp .env.example .env.local   # add ANTHROPIC_API_KEY + Firebase credentials (see .env.example)
 npm install
 npm run dev
 ```
@@ -33,14 +40,22 @@ served from cache.
 
 1. Push this repo to GitHub and connect it in Amplify Hosting (framework: Next.js — SSR,
    platform `WEB_COMPUTE`).
-2. Add the environment variable `ANTHROPIC_API_KEY` in Amplify → App settings → Environment
-   variables. The included `amplify.yml` writes it to `.env.production` during the build so the
-   SSR runtime can read it.
+2. Add environment variables in Amplify → App settings → Environment variables:
+   `ANTHROPIC_API_KEY`, and `FIREBASE_SERVICE_ACCOUNT_BASE64` (run
+   `base64 -i serviceAccountKey.json | tr -d '\n'` and paste the output). The included
+   `amplify.yml` writes them to `.env.production` during the build so the SSR runtime can read
+   them.
 3. Deploy. Optionally point a subdomain (e.g. `jeopardy.stanleyluong.com`) at the app.
 
 ## Notes
 
 - The in-memory rate limiter (`src/lib/rateLimit.ts`) is per-instance and best-effort — fine for
-  a low-stakes game whose expensive call is cached, but not a hard guarantee.
-- If the server cache is evicted mid-game the board regenerates with a new `boardId`; the judge
-  endpoint answers `409 board-changed` and the client reloads the new board.
+  a low-stakes game whose expensive call happens once a day, but not a hard guarantee.
+- **Firestore security rules:** all reads/writes go through the Admin SDK (which bypasses
+  rules), so make sure your rules do **not** grant clients access to `jeopardyBoards` — the
+  stored boards include the answers.
+- Score submissions are validated for shape and plausibility (score range/granularity, counts,
+  duration) but the game state itself lives client-side, so the leaderboard is honor-system —
+  appropriate for a portfolio game, not for prizes.
+- The judge endpoint answers `409 board-changed` if a client's board no longer matches the
+  stored one (e.g. a race on the day's first generation); the client reloads automatically.

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Game from "@/components/Game";
 
 export default function Home() {
@@ -12,6 +13,12 @@ export default function Home() {
             A new Jeopardy!-style board every day — six categories, thirty clues, written and
             judged by Claude. Type your answer; a lenient AI host rules on it.
           </p>
+          <Link
+            href="/boards"
+            className="inline-block mt-3 text-gold/80 hover:text-gold underline"
+          >
+            Play past boards →
+          </Link>
         </header>
         <Game />
       </main>
