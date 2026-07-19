@@ -20,23 +20,62 @@ export interface NewScore {
   wrong: number;
   passed: number;
   durationMs: number;
+  uid?: string; // present only when the submitter is a verified signed-in user
+}
+
+export interface MyScoreRow {
+  date: string;
+  score: number;
+  correct: number;
+  wrong: number;
+  passed: number;
+  durationMs: number;
+  submittedAt: string | null;
 }
 
 // Records the score and keeps a denormalized topScore on the board doc so the
 // archive list can show the day's champion without reading every scores
-// subcollection.
+// subcollection. When the submitter is signed in, also writes a per-user
+// mirror at users/{uid}/scores/{date} (one entry per user per day) so "my
+// past scores" is a plain collection read — deliberately avoiding a
+// collectionGroup query, which would need a manually-created composite
+// index (the same class of bug that broke listBoards() earlier).
 export async function submitScore(date: string, entry: NewScore): Promise<void> {
+  const { uid, ...entryFields } = entry;
   const boardRef = db().collection(BOARDS).doc(date);
   const scoreRef = boardRef.collection("scores").doc();
+  const userScoreRef = uid ? db().collection("users").doc(uid).collection("scores").doc(date) : null;
+
   await db().runTransaction(async (tx) => {
     const board = await tx.get(boardRef);
     if (!board.exists) throw new Error("no-board");
     const top = board.get("topScore") as { score: number } | undefined;
-    tx.create(scoreRef, { ...entry, submittedAt: FieldValue.serverTimestamp() });
+    const submittedAt = FieldValue.serverTimestamp();
+    tx.create(scoreRef, { ...entryFields, submittedAt });
+    if (userScoreRef) tx.set(userScoreRef, { ...entryFields, date, submittedAt });
     if (!top || entry.score > top.score) {
       tx.update(boardRef, { topScore: { name: entry.name, score: entry.score } });
     }
   });
+}
+
+export async function myScores(uid: string): Promise<MyScoreRow[]> {
+  const snap = await db().collection("users").doc(uid).collection("scores").get();
+  const rows: MyScoreRow[] = snap.docs.map((doc) => {
+    const data = doc.data();
+    const submittedAt = data.submittedAt as Timestamp | undefined;
+    return {
+      date: String(data.date ?? doc.id),
+      score: Number(data.score ?? 0),
+      correct: Number(data.correct ?? 0),
+      wrong: Number(data.wrong ?? 0),
+      passed: Number(data.passed ?? 0),
+      durationMs: Number(data.durationMs ?? 0),
+      submittedAt: submittedAt ? submittedAt.toDate().toISOString() : null,
+    };
+  });
+  rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return rows;
 }
 
 export async function topScores(date: string, limit = 20): Promise<ScoreRow[]> {

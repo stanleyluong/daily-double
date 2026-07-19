@@ -10,8 +10,8 @@ export default function Home() {
             Daily Double
           </h1>
           <p className="text-blue-200/70 mt-2 max-w-xl mx-auto">
-            A new Jeopardy!-style board every day — six categories, thirty clues, written and
-            judged by Claude. Type your answer; a lenient AI host rules on it.
+            A new Jeopardy!-style board every day — two rounds, 60 clues, Daily Doubles and all,
+            written and judged by Claude. Type your answer; a lenient AI host rules on it.
           </p>
           <Link
             href="/boards"

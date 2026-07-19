@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Bebas_Neue, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import AccountBar from "@/components/AccountBar";
+import AuthProvider from "@/components/AuthProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,7 +23,7 @@ const bebas = Bebas_Neue({
 export const metadata: Metadata = {
   title: "Daily Double — AI-generated Jeopardy",
   description:
-    "A fresh Jeopardy!-style trivia board every day. Six categories, thirty clues — written and judged by Claude.",
+    "A fresh Jeopardy!-style trivia board every day. Jeopardy! and Double Jeopardy! rounds, Daily Doubles, 60 clues — written and judged by Claude.",
 };
 
 export default function RootLayout({
@@ -34,7 +36,16 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${bebas.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      {/* suppressHydrationWarning: browser extensions (e.g. ColorZilla's
+          cz-shortcut-listen) inject attributes onto <body> before React
+          hydrates, which would otherwise falsely flag as a hydration
+          mismatch — this is the documented fix, scoped to this one element. */}
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        <AuthProvider>
+          <AccountBar />
+          {children}
+        </AuthProvider>
+      </body>
     </html>
   );
 }

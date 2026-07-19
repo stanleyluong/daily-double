@@ -6,6 +6,7 @@ import type { PublicBoard, PublicClue } from "@/lib/jeopardy";
 import type { PercentileStats, ScoreRow } from "@/lib/scores";
 import { formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
 import PercentileMeter from "@/components/PercentileMeter";
+import { useAuth } from "@/components/AuthProvider";
 
 type Outcome = "correct" | "wrong" | "passed";
 
@@ -14,6 +15,7 @@ interface ClueResult {
   correctAnswer: string;
   comment: string;
   playerAnswer?: string;
+  pointValue: number; // face value, or the wager for a Daily Double
 }
 
 interface SavedGame {
@@ -21,6 +23,7 @@ interface SavedGame {
   boardId: string;
   results: Record<string, ClueResult>;
   score: number;
+  roundIndex: number;
   startedAt: number | null;
   durationMs: number | null;
   submitted: boolean;
@@ -28,21 +31,23 @@ interface SavedGame {
 
 interface ActiveClue extends PublicClue {
   categoryTitle: string;
+  wager?: number;
 }
 
 const NAME_KEY = "daily-double-name";
 
 const LOADING_MESSAGES = [
   "Summoning today's categories…",
-  "Claude is writing 30 clues…",
-  "Fact-checking the $1000 row…",
+  "Claude is writing 60 clues across two rounds…",
+  "Hiding the Daily Doubles…",
+  "Fact-checking the $2000 row…",
   "Polishing the wordplay…",
   "Lowering the podiums…",
   "Cueing the think music…",
 ];
 
 function storageKey(date: string): string {
-  return `daily-double-v2:${date}`;
+  return `daily-double-v3:${date}`;
 }
 
 function loadSaved(date: string): SavedGame | null {
@@ -54,14 +59,23 @@ function loadSaved(date: string): SavedGame | null {
   }
 }
 
+function roundClueIds(board: PublicBoard, roundIndex: number): string[] {
+  const round = board.rounds[roundIndex];
+  if (!round) return [];
+  return round.categories.flatMap((c) => c.clues.map((cl) => cl.id));
+}
+
 export default function Game({ date }: { date?: string }) {
+  const { user } = useAuth();
   const [board, setBoard] = useState<PublicBoard | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [results, setResults] = useState<Record<string, ClueResult>>({});
   const [score, setScore] = useState(0);
+  const [roundIndex, setRoundIndex] = useState(0);
   const [active, setActive] = useState<ActiveClue | null>(null);
-  const [phase, setPhase] = useState<"answering" | "judging" | "result">("answering");
+  const [phase, setPhase] = useState<"wager" | "answering" | "judging" | "result">("answering");
+  const [wagerInput, setWagerInput] = useState("");
   const [input, setInput] = useState("");
   const [verdict, setVerdict] = useState<ClueResult | null>(null);
   const [loadingMsg, setLoadingMsg] = useState(0);
@@ -73,6 +87,7 @@ export default function Game({ date }: { date?: string }) {
   const [leaderboard, setLeaderboard] = useState<ScoreRow[] | null>(null);
   const [stats, setStats] = useState<PercentileStats | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const wagerRef = useRef<HTMLInputElement>(null);
   // Timer + submission flags live in a ref so persist() never sees stale state.
   const metaRef = useRef<{ startedAt: number | null; durationMs: number | null; submitted: boolean }>({
     startedAt: null,
@@ -81,11 +96,14 @@ export default function Game({ date }: { date?: string }) {
   });
 
   const totalClues = useMemo(
-    () => board?.categories.reduce((n, c) => n + c.clues.length, 0) ?? 0,
+    () => board?.rounds.reduce((n, r) => n + r.categories.reduce((m, c) => m + c.clues.length, 0), 0) ?? 0,
     [board]
   );
   const answeredCount = Object.keys(results).length;
   const finished = board !== null && totalClues > 0 && answeredCount === totalClues;
+  const currentRoundIds = useMemo(() => (board ? roundClueIds(board, roundIndex) : []), [board, roundIndex]);
+  const roundComplete =
+    currentRoundIds.length > 0 && currentRoundIds.every((id) => id in results) && !finished;
   const counts = useMemo(() => {
     const c = { correct: 0, wrong: 0, passed: 0 };
     for (const r of Object.values(results)) c[r.outcome]++;
@@ -109,6 +127,7 @@ export default function Game({ date }: { date?: string }) {
       if (saved && saved.boardId === fresh.boardId) {
         setResults(saved.results);
         setScore(saved.score);
+        setRoundIndex(saved.roundIndex ?? 0);
         setSubmitted(saved.submitted ?? false);
         metaRef.current = {
           startedAt: saved.startedAt ?? null,
@@ -119,14 +138,16 @@ export default function Game({ date }: { date?: string }) {
         localStorage.removeItem(storageKey(fresh.date));
         setResults({});
         setScore(0);
+        setRoundIndex(0);
         setSubmitted(false);
         metaRef.current = { startedAt: null, durationMs: null, submitted: false };
       }
-      setPlayerName(localStorage.getItem(NAME_KEY) ?? "");
+      setPlayerName(user?.displayName ?? localStorage.getItem(NAME_KEY) ?? "");
       setBoard(fresh);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Failed to load the board.");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
   useEffect(() => {
@@ -142,16 +163,18 @@ export default function Game({ date }: { date?: string }) {
 
   useEffect(() => {
     if (active && phase === "answering") inputRef.current?.focus();
+    if (active && phase === "wager") wagerRef.current?.focus();
   }, [active, phase]);
 
   const persist = useCallback(
-    (nextResults: Record<string, ClueResult>, nextScore: number) => {
+    (nextResults: Record<string, ClueResult>, nextScore: number, nextRoundIndex: number) => {
       if (!board) return;
       const saved: SavedGame = {
         date: board.date,
         boardId: board.boardId,
         results: nextResults,
         score: nextScore,
+        roundIndex: nextRoundIndex,
         startedAt: metaRef.current.startedAt,
         durationMs: metaRef.current.durationMs,
         submitted: metaRef.current.submitted,
@@ -172,9 +195,13 @@ export default function Game({ date }: { date?: string }) {
         }
         setScore((prevScore) => {
           const delta =
-            result.outcome === "correct" ? clue.value : result.outcome === "wrong" ? -clue.value : 0;
+            result.outcome === "correct"
+              ? result.pointValue
+              : result.outcome === "wrong"
+                ? -result.pointValue
+                : 0;
           const nextScore = prevScore + delta;
-          persist(next, nextScore);
+          persist(next, nextScore, roundIndex);
           return nextScore;
         });
         return next;
@@ -182,7 +209,7 @@ export default function Game({ date }: { date?: string }) {
       setVerdict(result);
       setPhase("result");
     },
-    [persist, totalClues]
+    [persist, totalClues, roundIndex]
   );
 
   const handleBoardChanged = useCallback(() => {
@@ -212,11 +239,13 @@ export default function Game({ date }: { date?: string }) {
         const data = await res.json();
         if (res.status === 409) return handleBoardChanged();
         if (!res.ok) throw new Error(data.error ?? "Judging failed.");
+        const pointValue = active.dailyDouble && active.wager ? active.wager : active.value;
         recordResult(active, {
           outcome: reveal ? "passed" : data.correct ? "correct" : "wrong",
           correctAnswer: data.correctAnswer,
           comment: data.comment,
           playerAnswer: reveal ? undefined : answer,
+          pointValue,
         });
       } catch (error) {
         setPhase("answering");
@@ -231,7 +260,20 @@ export default function Game({ date }: { date?: string }) {
     if (metaRef.current.startedAt === null) metaRef.current.startedAt = Date.now();
     setActive({ ...clue, categoryTitle });
     setInput("");
+    setWagerInput("");
     setVerdict(null);
+    setPhase(clue.dailyDouble ? "wager" : "answering");
+  };
+
+  const roundMaxValue = (roundIndex + 1) * 1000; // 1000 for round 1, 2000 for round 2
+  const maxWager = Math.max(score, roundMaxValue);
+
+  const submitWager = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!active) return;
+    const raw = Math.round(Number(wagerInput) / 100) * 100;
+    const wager = Math.min(maxWager, Math.max(5, Number.isFinite(raw) && raw > 0 ? raw : 5));
+    setActive({ ...active, wager });
     setPhase("answering");
   };
 
@@ -254,6 +296,13 @@ export default function Game({ date }: { date?: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [phase, closeClue]);
 
+  const advanceRound = () => {
+    if (!board) return;
+    const next = roundIndex + 1;
+    setRoundIndex(next);
+    persist(results, score, next);
+  };
+
   // Load the leaderboard once the game is over (and after submitting).
   useEffect(() => {
     if (!finished || !board || leaderboard) return;
@@ -269,9 +318,11 @@ export default function Game({ date }: { date?: string }) {
     if (!name) return;
     setSubmitting(true);
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (user) headers.Authorization = `Bearer ${await user.getIdToken()}`;
       const res = await fetch("/api/scores", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           date: board.date,
           boardId: board.boardId,
@@ -291,7 +342,7 @@ export default function Game({ date }: { date?: string }) {
       setSubmitted(true);
       setLeaderboard((data.scores as ScoreRow[]) ?? null);
       setStats((data.stats as PercentileStats) ?? null);
-      persist(results, score);
+      persist(results, score, roundIndex);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Couldn't save your score.");
     } finally {
@@ -302,16 +353,18 @@ export default function Game({ date }: { date?: string }) {
   const shareResult = async () => {
     if (!board) return;
     const rows: string[] = [];
-    for (let r = 0; r < 5; r++) {
-      rows.push(
-        board.categories
-          .map((cat) => {
-            const result = results[cat.clues[r]?.id ?? ""];
-            if (!result) return "⬛";
-            return result.outcome === "correct" ? "🟩" : result.outcome === "wrong" ? "🟥" : "⬜";
-          })
-          .join("")
-      );
+    for (const round of board.rounds) {
+      for (let r = 0; r < 5; r++) {
+        rows.push(
+          round.categories
+            .map((cat) => {
+              const result = results[cat.clues[r]?.id ?? ""];
+              if (!result) return "⬛";
+              return result.outcome === "correct" ? "🟩" : result.outcome === "wrong" ? "🟥" : "⬜";
+            })
+            .join("")
+        );
+      }
     }
     const text = `Daily Double ${board.date}\n${formatMoney(score)}\n${rows.join("\n")}`;
     try {
@@ -373,11 +426,16 @@ export default function Game({ date }: { date?: string }) {
     );
   }
 
+  const round = board.rounds[roundIndex];
+
   return (
     <div className="w-full max-w-5xl mx-auto">
       {/* Scoreboard */}
       <div className="flex items-baseline justify-between mb-4 px-1">
-        <p className="text-sm text-blue-200/70">{formatBoardDate(board.date)}</p>
+        <div>
+          <p className="text-sm text-blue-200/70">{formatBoardDate(board.date)}</p>
+          <p className="font-display tracking-wide text-gold text-sm uppercase">{round.name}</p>
+        </div>
         <p className="font-display text-3xl tracking-wide">
           <span className={score < 0 ? "text-red-400" : "text-gold"}>{formatMoney(score)}</span>
           <span className="text-blue-200/50 text-lg ml-3">
@@ -386,58 +444,76 @@ export default function Game({ date }: { date?: string }) {
         </p>
       </div>
 
-      {/* Board */}
-      <div className="overflow-x-auto pb-2">
-        <div className="grid grid-cols-6 gap-1.5 min-w-[680px]">
-          {board.categories.map((cat) => (
-            <div
-              key={cat.title}
-              className="bg-board-deep rounded-sm flex items-center justify-center p-2 min-h-[72px] text-center"
-            >
-              <span className="font-display tracking-wide text-sm md:text-base leading-tight uppercase">
-                {cat.title}
-              </span>
-            </div>
-          ))}
-          {Array.from({ length: 5 }).map((_, row) =>
-            board.categories.map((cat) => {
-              const clue = cat.clues[row];
-              if (!clue) return <div key={`${cat.title}-${row}`} />;
-              const result = results[clue.id];
-              return (
-                <button
-                  key={clue.id}
-                  onClick={() => openClue(clue, cat.title)}
-                  disabled={!!result}
-                  className={`rounded-sm min-h-[64px] md:min-h-[76px] flex items-center justify-center transition-colors ${
-                    result
-                      ? "bg-board/30 cursor-default"
-                      : "bg-board hover:bg-board-deep cursor-pointer"
-                  }`}
-                >
-                  {result ? (
-                    <span
-                      className={`text-xl ${
-                        result.outcome === "correct"
-                          ? "text-green-400"
-                          : result.outcome === "wrong"
-                            ? "text-red-400"
-                            : "text-blue-200/40"
-                      }`}
-                    >
-                      {result.outcome === "correct" ? "✓" : result.outcome === "wrong" ? "✗" : "–"}
-                    </span>
-                  ) : (
-                    <span className="font-display text-2xl md:text-3xl text-gold tracking-wide">
-                      ${clue.value}
-                    </span>
-                  )}
-                </button>
-              );
-            })
-          )}
+      {roundComplete ? (
+        /* Round-transition interstitial */
+        <div className="mt-4 bg-board-deep/60 border border-board rounded-lg p-10 text-center">
+          <p className="font-display text-3xl tracking-wide text-gold mb-2">
+            {round.name} complete!
+          </p>
+          <p className="text-blue-200/70 mb-6">
+            Score so far: <span className="text-gold">{formatMoney(score)}</span>
+          </p>
+          <button
+            onClick={advanceRound}
+            className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
+          >
+            Continue to {board.rounds[roundIndex + 1]?.name} — values double →
+          </button>
         </div>
-      </div>
+      ) : (
+        /* Board */
+        <div className="overflow-x-auto pb-2">
+          <div className="grid grid-cols-6 gap-1.5 min-w-[680px]">
+            {round.categories.map((cat) => (
+              <div
+                key={cat.title}
+                className="bg-board-deep rounded-sm flex items-center justify-center p-2 min-h-[72px] text-center"
+              >
+                <span className="font-display tracking-wide text-sm md:text-base leading-tight uppercase">
+                  {cat.title}
+                </span>
+              </div>
+            ))}
+            {Array.from({ length: 5 }).map((_, row) =>
+              round.categories.map((cat) => {
+                const clue = cat.clues[row];
+                if (!clue) return <div key={`${cat.title}-${row}`} />;
+                const result = results[clue.id];
+                return (
+                  <button
+                    key={clue.id}
+                    onClick={() => openClue(clue, cat.title)}
+                    disabled={!!result}
+                    className={`rounded-sm min-h-[64px] md:min-h-[76px] flex items-center justify-center transition-colors ${
+                      result
+                        ? "bg-board/30 cursor-default"
+                        : "bg-board hover:bg-board-deep cursor-pointer"
+                    }`}
+                  >
+                    {result ? (
+                      <span
+                        className={`text-xl ${
+                          result.outcome === "correct"
+                            ? "text-green-400"
+                            : result.outcome === "wrong"
+                              ? "text-red-400"
+                              : "text-blue-200/40"
+                        }`}
+                      >
+                        {result.outcome === "correct" ? "✓" : result.outcome === "wrong" ? "✗" : "–"}
+                      </span>
+                    ) : (
+                      <span className="font-display text-2xl md:text-3xl text-gold tracking-wide">
+                        ${clue.value}
+                      </span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Final banner: score, name submission, leaderboard */}
       {finished && (
@@ -535,21 +611,6 @@ export default function Game({ date }: { date?: string }) {
               </ol>
             )}
           </div>
-
-          <div className="flex flex-wrap gap-4 justify-center mt-6">
-            <button
-              onClick={shareResult}
-              className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
-            >
-              {copied ? "Copied!" : "Copy result"}
-            </button>
-            <a
-              href="/boards"
-              className="font-display text-xl tracking-wider border border-gold/60 text-gold hover:bg-board px-6 py-2 rounded"
-            >
-              Past boards
-            </a>
-          </div>
         </div>
       )}
 
@@ -557,79 +618,114 @@ export default function Game({ date }: { date?: string }) {
       {active && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-2xl bg-board rounded-lg shadow-2xl p-6 md:p-10">
-            <p className="font-display tracking-wider text-gold uppercase mb-1">
-              {active.categoryTitle} · ${active.value}
-            </p>
-            <p className="text-xl md:text-2xl leading-snug my-6">{active.clue}</p>
-
-            {phase !== "result" && (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  submitAnswer(false);
-                }}
-                className="flex flex-col gap-3"
-              >
+            {phase === "wager" ? (
+              <form onSubmit={submitWager} className="text-center">
+                <p className="font-display text-4xl tracking-widest text-gold mb-1 animate-pulse">
+                  DAILY DOUBLE!
+                </p>
+                <p className="text-blue-200/70 mb-6">
+                  Category: <span className="text-foreground">{active.categoryTitle}</span>
+                </p>
+                <label className="block text-sm text-blue-200/70 mb-2">
+                  Wager between $5 and ${maxWager.toLocaleString()}
+                </label>
                 <input
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  maxLength={200}
-                  disabled={phase === "judging"}
-                  placeholder="What is…?"
-                  className="w-full rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-lg placeholder:text-blue-200/40"
+                  ref={wagerRef}
+                  type="number"
+                  min={5}
+                  max={maxWager}
+                  step={100}
+                  value={wagerInput}
+                  onChange={(e) => setWagerInput(e.target.value)}
+                  placeholder={`e.g. ${Math.min(maxWager, 1000)}`}
+                  className="w-full text-center rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-2xl font-display tracking-wide placeholder:text-blue-200/30 mb-4"
                 />
-                <div className="flex gap-3 justify-end">
-                  <button
-                    type="button"
-                    onClick={() => submitAnswer(true)}
-                    disabled={phase === "judging"}
-                    className="text-blue-200/70 hover:text-blue-100 px-4 py-2 disabled:opacity-50"
-                  >
-                    No idea — reveal
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={phase === "judging" || !input.trim()}
-                    className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded disabled:opacity-50"
-                  >
-                    {phase === "judging" ? "Judges…" : "Submit"}
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {phase === "result" && verdict && (
-              <div>
-                <p
-                  className={`font-display text-3xl tracking-wide mb-2 ${
-                    verdict.outcome === "correct"
-                      ? "text-green-400"
-                      : verdict.outcome === "wrong"
-                        ? "text-red-400"
-                        : "text-blue-200/70"
-                  }`}
+                <button
+                  type="submit"
+                  className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
                 >
-                  {verdict.outcome === "correct"
-                    ? `Correct! +$${active.value}`
-                    : verdict.outcome === "wrong"
-                      ? `Incorrect. −$${active.value}`
-                      : "Passed"}
+                  Lock in wager
+                </button>
+              </form>
+            ) : (
+              <>
+                <p className="font-display tracking-wider text-gold uppercase mb-1">
+                  {active.categoryTitle} · $
+                  {active.dailyDouble && active.wager ? active.wager.toLocaleString() : active.value}
+                  {active.dailyDouble && " · DAILY DOUBLE"}
                 </p>
-                <p className="text-lg mb-1">
-                  <span className="text-blue-200/60">Answer: </span>
-                  <span className="text-gold">{verdict.correctAnswer}</span>
-                </p>
-                {verdict.comment && <p className="text-blue-200/80 italic">{verdict.comment}</p>}
-                <div className="flex justify-end mt-6">
-                  <button
-                    onClick={closeClue}
-                    className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
+                <p className="text-xl md:text-2xl leading-snug my-6">{active.clue}</p>
+
+                {phase !== "result" && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      submitAnswer(false);
+                    }}
+                    className="flex flex-col gap-3"
                   >
-                    Back to board <span className="opacity-60">⏎</span>
-                  </button>
-                </div>
-              </div>
+                    <input
+                      ref={inputRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      maxLength={200}
+                      disabled={phase === "judging"}
+                      placeholder="What is…?"
+                      className="w-full rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-lg placeholder:text-blue-200/40"
+                    />
+                    <div className="flex gap-3 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => submitAnswer(true)}
+                        disabled={phase === "judging"}
+                        className="text-blue-200/70 hover:text-blue-100 px-4 py-2 disabled:opacity-50"
+                      >
+                        No idea — reveal
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={phase === "judging" || !input.trim()}
+                        className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded disabled:opacity-50"
+                      >
+                        {phase === "judging" ? "Judges…" : "Submit"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {phase === "result" && verdict && (
+                  <div>
+                    <p
+                      className={`font-display text-3xl tracking-wide mb-2 ${
+                        verdict.outcome === "correct"
+                          ? "text-green-400"
+                          : verdict.outcome === "wrong"
+                            ? "text-red-400"
+                            : "text-blue-200/70"
+                      }`}
+                    >
+                      {verdict.outcome === "correct"
+                        ? `Correct! +$${verdict.pointValue.toLocaleString()}`
+                        : verdict.outcome === "wrong"
+                          ? `Incorrect. −$${verdict.pointValue.toLocaleString()}`
+                          : "Passed"}
+                    </p>
+                    <p className="text-lg mb-1">
+                      <span className="text-blue-200/60">Answer: </span>
+                      <span className="text-gold">{verdict.correctAnswer}</span>
+                    </p>
+                    {verdict.comment && <p className="text-blue-200/80 italic">{verdict.comment}</p>}
+                    <div className="flex justify-end mt-6">
+                      <button
+                        onClick={closeClue}
+                        className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
+                      >
+                        Back to board <span className="opacity-60">⏎</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

@@ -2,12 +2,31 @@ import { NextResponse } from "next/server";
 import { getBoardForDate, isValidDateKey, todayKey } from "@/lib/jeopardy";
 import { percentileFor, submitScore, topScores } from "@/lib/scores";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
+import { authAdmin } from "@/lib/firebaseAdmin";
+
+// Best-effort: an invalid/missing token just means the submission is
+// anonymous, not a rejected request — signing in is optional to play.
+async function uidFromRequest(request: Request): Promise<string | undefined> {
+  const header = request.headers.get("authorization") ?? "";
+  const idToken = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!idToken) return undefined;
+  try {
+    return (await authAdmin().verifyIdToken(idToken)).uid;
+  } catch {
+    return undefined;
+  }
+}
 
 export const dynamic = "force-dynamic";
 
-// Highest possible score: 6 categories x (200+400+600+800+1000).
-const MAX_SCORE = 18_000;
+// Generous safety cap, not a tight gameplay bound: face values alone total
+// 18,000 (round 1) + 36,000 (round 2) = 54,000, but a Daily Double wager can
+// exceed its clue's face value up to the player's current score, so the true
+// ceiling depends on play. This just catches obviously-fabricated numbers.
+const MAX_SCORE = 200_000;
 const MAX_DURATION_MS = 6 * 60 * 60 * 1000;
+// Two 30-clue rounds.
+const TOTAL_CLUES = 60;
 
 export async function GET(request: Request) {
   if (!rateLimit(`scores-get:${clientIp(request)}`, 30, 60_000)) {
@@ -37,7 +56,7 @@ interface SubmitRequest {
 }
 
 function isCount(n: unknown): n is number {
-  return typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 30;
+  return typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= TOTAL_CLUES;
 }
 
 export async function POST(request: Request) {
@@ -62,11 +81,11 @@ export async function POST(request: Request) {
     typeof score !== "number" ||
     !Number.isInteger(score) ||
     Math.abs(score) > MAX_SCORE ||
-    score % 200 !== 0 ||
+    score % 100 !== 0 || // face values are multiples of 200/400; wagers are multiples of 100
     !isCount(correct) ||
     !isCount(wrong) ||
     !isCount(passed) ||
-    correct + wrong + passed > 30 ||
+    correct + wrong + passed > TOTAL_CLUES ||
     typeof durationMs !== "number" ||
     !Number.isInteger(durationMs) ||
     durationMs < 0 ||
@@ -84,7 +103,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "board-changed" }, { status: 409 });
     }
 
-    await submitScore(date, { name, score, correct, wrong, passed, durationMs });
+    const uid = await uidFromRequest(request);
+    await submitScore(date, { name, score, correct, wrong, passed, durationMs, uid });
     const [scores, stats] = await Promise.all([topScores(date), percentileFor(date, score)]);
     return NextResponse.json({ ok: true, scores, stats });
   } catch (error) {

@@ -11,6 +11,7 @@ export interface Clue {
   clue: string;
   answer: string;
   acceptable: string[];
+  dailyDouble: boolean;
 }
 
 export interface Category {
@@ -18,23 +19,39 @@ export interface Category {
   clues: Clue[];
 }
 
-export interface Board {
-  boardId: string;
-  date: string;
+export interface Round {
+  name: string;
   categories: Category[];
 }
 
-// What the browser is allowed to see — no answers.
+export interface Board {
+  boardId: string;
+  date: string;
+  rounds: Round[]; // [0] = Jeopardy!, [1] = Double Jeopardy!
+}
+
+// What the browser is allowed to see — no answers. `dailyDouble` IS included:
+// hiding it would need a server round-trip per clue-open for a purely
+// cosmetic surprise, and this is a casual portfolio game — the client
+// withholds rendering the clue text until a wager is placed, which is
+// enough to preserve the "wager blind" experience for anyone actually
+// playing rather than reading network traffic.
 export interface PublicClue {
   id: string;
   value: number;
   clue: string;
+  dailyDouble: boolean;
+}
+
+export interface PublicRound {
+  name: string;
+  categories: { title: string; clues: PublicClue[] }[];
 }
 
 export interface PublicBoard {
   boardId: string;
   date: string;
-  categories: { title: string; clues: PublicClue[] }[];
+  rounds: PublicRound[];
 }
 
 function client(): Anthropic {
@@ -100,7 +117,11 @@ const JUDGE_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-async function generateCategories(date: string): Promise<{ title: string; theme: string }[]> {
+async function generateCategories(
+  date: string,
+  roundLabel: string,
+  harder: boolean
+): Promise<{ title: string; theme: string }[]> {
   const message = await client().messages.create({
     model: MODEL,
     max_tokens: 1024,
@@ -110,13 +131,17 @@ async function generateCategories(date: string): Promise<{ title: string; theme:
     messages: [
       {
         role: "user",
-        content: `Create exactly 6 categories for the daily board of ${date}.
+        content: `Create exactly 6 categories for the ${roundLabel} round of the daily board of ${date}.
 
 Requirements:
 - A diverse mix across the 6: at least one from history/geography/science, one from arts/literature, one from pop culture/sports/food, and one wordplay or gimmick category (e.g. all answers share a letter, rhyme, or contain a hidden word).
 - Titles are short and punchy, puns welcome, ALL CAPS not required.
 - For each category, write a one-sentence "theme" that a clue writer would use to stay on-brief (for gimmick categories, state the gimmick precisely).
-- Vary topics day to day; let the date seed your choices but never mention the date in titles.`,
+- Vary topics day to day; let the date seed your choices but never mention the date in titles.${
+          harder
+            ? "\n- This is the second (harder) round: categories should be a notch more specific or advanced than a first-round board, the way real Double Jeopardy! categories go deeper than the first round."
+            : ""
+        }`,
       },
     ],
   });
@@ -127,9 +152,10 @@ Requirements:
   return categories.slice(0, 6);
 }
 
-async function generateClues(category: { title: string; theme: string }): Promise<
-  { clue: string; answer: string; acceptable: string[] }[]
-> {
+async function generateClues(
+  category: { title: string; theme: string },
+  harder: boolean
+): Promise<{ clue: string; answer: string; acceptable: string[] }[]> {
   const message = await client().messages.create({
     model: MODEL,
     max_tokens: 2048,
@@ -144,7 +170,11 @@ Theme brief: ${category.theme}
 
 Requirements:
 - Jeopardy! style: each clue is a declarative statement or description; the player responds with the answer (e.g. clue: "This president delivered the Gettysburg Address" → answer: "Abraham Lincoln").
-- Order from easiest (worth $200) to hardest (worth $1000). $200 should be gettable by most people; $1000 should challenge a trivia fan.
+- Order from easiest to hardest.${
+          harder
+            ? " This is the harder, second-round difficulty band — even the easiest clue here should be a bit tougher than a casual first-round clue, and the hardest should challenge a serious trivia fan."
+            : " The easiest should be gettable by most people; the hardest should challenge a trivia fan."
+        }
 - Answers must be short (a name, term, title, or place — not a sentence) and factually correct beyond doubt. Do not write clues you are not certain about.
 - "acceptable" lists alternate correct forms: last name only, common nicknames, alternate spellings, with/without articles. Empty array if none.
 - Never include the answer text inside its own clue.`,
@@ -158,25 +188,67 @@ Requirements:
   return clues.slice(0, 5);
 }
 
-// One board is ~30 clues. Generating it in a single request runs long enough
-// to threaten Amplify's SSR response window, so we fan out: one fast call for
-// categories, then all 6 clue calls in parallel.
-async function generateBoard(date: string): Promise<Board> {
-  const categoryBriefs = await generateCategories(date);
-  const clueSets = await Promise.all(categoryBriefs.map((c) => generateClues(c)));
+// Real-rules approximation: Daily Doubles never land in the top ($200/$400)
+// row, and when a round has more than one, they never share a category.
+function placeDailyDoubles(categories: Category[], count: number): void {
+  const candidates: { catIndex: number; rowIndex: number }[] = [];
+  for (let c = 0; c < categories.length; c++) {
+    for (let r = 1; r < categories[c].clues.length; r++) {
+      candidates.push({ catIndex: c, rowIndex: r });
+    }
+  }
+  // Fisher-Yates shuffle, then greedily take picks whose category hasn't
+  // been used yet — simpler than backtracking and fine for count <= 2.
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+  const usedCategories = new Set<number>();
+  let placed = 0;
+  for (const pick of candidates) {
+    if (placed >= count) break;
+    if (usedCategories.has(pick.catIndex)) continue;
+    categories[pick.catIndex].clues[pick.rowIndex].dailyDouble = true;
+    usedCategories.add(pick.catIndex);
+    placed++;
+  }
+}
+
+async function generateRound(
+  date: string,
+  roundIndex: number,
+  name: string,
+  multiplier: number,
+  dailyDoubleCount: number
+): Promise<Round> {
+  const harder = multiplier > 1;
+  const categoryBriefs = await generateCategories(date, name, harder);
+  const clueSets = await Promise.all(categoryBriefs.map((c) => generateClues(c, harder)));
 
   const categories: Category[] = categoryBriefs.map((brief, c) => ({
     title: brief.title,
     clues: clueSets[c].map((raw, r) => ({
-      id: `${c}-${r}`,
-      value: (r + 1) * 200,
+      id: `${roundIndex}-${c}-${r}`,
+      value: (r + 1) * 200 * multiplier,
       clue: raw.clue,
       answer: raw.answer,
       acceptable: raw.acceptable ?? [],
+      dailyDouble: false,
     })),
   }));
 
-  return { boardId: randomUUID(), date, categories };
+  placeDailyDoubles(categories, dailyDoubleCount);
+  return { name, categories };
+}
+
+// A board is two rounds, ~60 clues total. Each round's category call is fast;
+// the 6 clue calls per round run in parallel, and the two rounds run
+// sequentially (12 parallel-in-pairs calls total) to stay well inside
+// Amplify's SSR response window without one giant fan-out.
+async function generateBoard(date: string): Promise<Board> {
+  const jeopardy = await generateRound(date, 0, "Jeopardy!", 1, 1);
+  const doubleJeopardy = await generateRound(date, 1, "Double Jeopardy!", 2, 2);
+  return { boardId: randomUUID(), date, rounds: [jeopardy, doubleJeopardy] };
 }
 
 // Everyone worldwide plays the same board; the day rolls over on US Pacific time.
@@ -197,7 +269,7 @@ const BOARDS = "jeopardyBoards";
 const memo = new Map<string, Board>();
 
 function boardFromDoc(data: FirebaseFirestore.DocumentData): Board {
-  return { boardId: data.boardId, date: data.date, categories: data.categories };
+  return { boardId: data.boardId, date: data.date, rounds: data.rounds };
 }
 
 // Returns the board for a date: from memo, then Firestore. Only today's board
@@ -221,8 +293,8 @@ export async function getBoardForDate(date: string): Promise<Board | null> {
     await ref.create({
       boardId: board.boardId,
       date: board.date,
-      categories: board.categories,
-      categoryTitles: board.categories.map((c) => c.title),
+      rounds: board.rounds,
+      categoryTitles: board.rounds.flatMap((r) => r.categories.map((c) => c.title)),
       createdAt: FieldValue.serverTimestamp(),
     });
   } catch {
@@ -263,17 +335,25 @@ export function toPublicBoard(board: Board): PublicBoard {
   return {
     boardId: board.boardId,
     date: board.date,
-    categories: board.categories.map((cat) => ({
-      title: cat.title,
-      clues: cat.clues.map(({ id, value, clue }) => ({ id, value, clue })),
+    rounds: board.rounds.map((round) => ({
+      name: round.name,
+      categories: round.categories.map((cat) => ({
+        title: cat.title,
+        clues: cat.clues.map(({ id, value, clue, dailyDouble }) => ({ id, value, clue, dailyDouble })),
+      })),
     })),
   };
 }
 
-export function findClue(board: Board, clueId: string): { clue: Clue; category: Category } | null {
-  for (const category of board.categories) {
-    const clue = category.clues.find((c) => c.id === clueId);
-    if (clue) return { clue, category };
+export function findClue(
+  board: Board,
+  clueId: string
+): { clue: Clue; category: Category; roundIndex: number } | null {
+  for (let roundIndex = 0; roundIndex < board.rounds.length; roundIndex++) {
+    for (const category of board.rounds[roundIndex].categories) {
+      const clue = category.clues.find((c) => c.id === clueId);
+      if (clue) return { clue, category, roundIndex };
+    }
   }
   return null;
 }
