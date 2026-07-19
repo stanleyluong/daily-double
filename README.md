@@ -22,17 +22,26 @@ Claude, and your typed answers are judged by Claude too (leniently, the way a hu
   `PublicClue` in `src/lib/jeopardy.ts` for the trust tradeoff). Judging happens server-side:
   `POST /api/judge` looks up the answer in the stored board and asks Claude for a lenient ruling
   plus a one-line quip.
-- **Leaderboards + percentile.** When a game ends, the player can post a name; `POST /api/scores`
-  validates the payload and records name, score, right/wrong/passed counts, and completion time
-  under `jeopardyBoards/{date}/scores`, keeping a denormalized `topScore` on the board doc for
-  the archive list. The response includes a percentile computed via two Firestore aggregate-count
-  queries, shown as a radial meter (`src/components/PercentileMeter.tsx`).
-- **Sign in (Google or email) to track your scores.** `src/lib/firebaseClient.ts` +
-  `AuthProvider`/`AccountBar`/`AuthModal` wrap the Firebase Auth *client* SDK — separate from the
-  Admin SDK used everywhere else. A signed-in submission includes a Firebase ID token; the server
-  verifies it (`firebase-admin/auth`) and mirrors the score to `users/{uid}/scores/{date}` (one
-  doc per user per day) so `/me` can list your history with a plain collection read — deliberately
-  not a Firestore `collectionGroup` query, which would need a manually-created composite index.
+- **Leaderboards + percentile.** Sign-in is required to post a score (see below) — the player can
+  edit the display name, then `POST /api/scores` validates the payload and records name, score,
+  right/wrong/passed counts, and completion time under `jeopardyBoards/{date}/scores`, keyed by
+  `uid` rather than an auto-ID, plus a denormalized `topScore` on the board doc for the archive
+  list. The response includes a percentile computed via two Firestore aggregate-count queries,
+  shown as a radial meter (`src/components/PercentileMeter.tsx`).
+- **Sign in (Google or email) to post a score; anyone can still play.** `src/lib/firebaseClient.ts`
+  + `AuthProvider`/`AccountBar`/`AuthModal` wrap the Firebase Auth *client* SDK — separate from the
+  Admin SDK used everywhere else. A submission includes a Firebase ID token; the server verifies
+  it (`firebase-admin/auth`, `POST /api/scores` returns 401 without a valid one) and mirrors the
+  score to `users/{uid}/scores/{date}` so `/me` can list history with a plain collection read —
+  deliberately not a Firestore `collectionGroup` query, which would need a manually-created
+  composite index.
+- **One leaderboard entry per account per day.** Both the `jeopardyBoards/{date}/scores/{uid}` and
+  `users/{uid}/scores/{date}` writes use `tx.create()` inside a transaction, which fails outright
+  if the doc already exists — `submitScore()` in `src/lib/scores.ts` surfaces this as a thrown
+  `"already-submitted"` Error, and the route maps it to a 409 the client treats as "already
+  posted," not an error. This is the actual anti-cheat lever: it closes the "lose, clear
+  `localStorage`, replay the now-familiar board, submit a better score" loophole for anyone
+  bothering to sign in for it — see the trade-offs in Notes below.
 - **Archive.** `/boards` lists every stored board (categories + top scorer) with a link to that
   date's full leaderboard (`/boards/[date]/scores`); `/boards/[date]` replays one.
 - **Progress persists locally.** Score, round, and answered clues are stored in `localStorage`,
@@ -82,8 +91,15 @@ domain (`localhost` is pre-authorized for local dev).
   that uid if you ever add client-side Firestore access there (currently everything goes through
   the Admin SDK, so this is a defense-in-depth note, not a current gap).
 - Score submissions are validated for shape and plausibility (score range/granularity, counts,
-  duration) but the game state itself lives client-side, so the leaderboard is honor-system —
-  appropriate for a portfolio game, not for prizes. Wager amounts are similarly client-trusted
-  (not re-validated server-side against the player's actual running score).
+  duration) but the game state itself lives client-side, so the leaderboard is still
+  honor-system, not tamper-proof — appropriate for a portfolio game, not for prizes. Wager amounts
+  are similarly client-trusted (not re-validated server-side against the player's actual running
+  score). `POST /api/judge` also reveals `correctAnswer` on every call, right or wrong, so a
+  motivated user could probe every clue ID directly without playing. Closing that would mean the
+  server tracking each judged answer against a session and computing the final score itself
+  (`/api/scores` becomes "finalize," not "accept a number") — a real rewrite, intentionally not
+  done here. The one-entry-per-account-per-day rule (see above) is the practical middle ground:
+  cheap to implement, raises the bar from "clear localStorage" to "make another Google account,"
+  and was judged sufficient for a hobby game with no real stakes.
 - The judge endpoint answers `409 board-changed` if a client's board no longer matches the
   stored one (e.g. a race on the day's first generation); the client reloads automatically.

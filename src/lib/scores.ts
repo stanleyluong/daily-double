@@ -20,7 +20,7 @@ export interface NewScore {
   wrong: number;
   passed: number;
   durationMs: number;
-  uid?: string; // present only when the submitter is a verified signed-in user
+  uid: string; // verified signed-in user — required; the API route rejects anonymous submissions
 }
 
 export interface MyScoreRow {
@@ -35,24 +35,32 @@ export interface MyScoreRow {
 
 // Records the score and keeps a denormalized topScore on the board doc so the
 // archive list can show the day's champion without reading every scores
-// subcollection. When the submitter is signed in, also writes a per-user
-// mirror at users/{uid}/scores/{date} (one entry per user per day) so "my
-// past scores" is a plain collection read — deliberately avoiding a
+// subcollection. Also writes a per-user mirror at users/{uid}/scores/{date}
+// so "my past scores" is a plain collection read — deliberately avoiding a
 // collectionGroup query, which would need a manually-created composite
 // index (the same class of bug that broke listBoards() earlier).
+//
+// The leaderboard doc is keyed by uid (not auto-ID), and both writes use
+// tx.create() — a second submission for the same user+date fails outright
+// rather than adding a duplicate entry or silently overwriting. That's the
+// actual anti-cheat lever: it closes the "lose, clear localStorage, replay
+// the now-familiar board, submit a better score" loophole, since a second
+// attempt has nowhere to land. Throws an Error with message
+// "already-submitted" in that case — the API route maps it to a 409.
 export async function submitScore(date: string, entry: NewScore): Promise<void> {
   const { uid, ...entryFields } = entry;
   const boardRef = db().collection(BOARDS).doc(date);
-  const scoreRef = boardRef.collection("scores").doc();
-  const userScoreRef = uid ? db().collection("users").doc(uid).collection("scores").doc(date) : null;
+  const scoreRef = boardRef.collection("scores").doc(uid);
+  const userScoreRef = db().collection("users").doc(uid).collection("scores").doc(date);
 
   await db().runTransaction(async (tx) => {
-    const board = await tx.get(boardRef);
+    const [board, existing] = await Promise.all([tx.get(boardRef), tx.get(scoreRef)]);
     if (!board.exists) throw new Error("no-board");
+    if (existing.exists) throw new Error("already-submitted");
     const top = board.get("topScore") as { score: number } | undefined;
     const submittedAt = FieldValue.serverTimestamp();
     tx.create(scoreRef, { ...entryFields, submittedAt });
-    if (userScoreRef) tx.set(userScoreRef, { ...entryFields, date, submittedAt });
+    tx.create(userScoreRef, { ...entryFields, date, submittedAt });
     if (!top || entry.score > top.score) {
       tx.update(boardRef, { topScore: { name: entry.name, score: entry.score } });
     }

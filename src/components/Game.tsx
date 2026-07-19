@@ -7,6 +7,7 @@ import type { PercentileStats, ScoreRow } from "@/lib/scores";
 import { formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
 import PercentileMeter from "@/components/PercentileMeter";
 import { useAuth } from "@/components/AuthProvider";
+import AuthModal from "@/components/AuthModal";
 
 type Outcome = "correct" | "wrong" | "passed";
 
@@ -86,6 +87,7 @@ export default function Game({ date }: { date?: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [leaderboard, setLeaderboard] = useState<ScoreRow[] | null>(null);
   const [stats, setStats] = useState<PercentileStats | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const wagerRef = useRef<HTMLInputElement>(null);
   // Timer + submission flags live in a ref so persist() never sees stale state.
@@ -153,6 +155,14 @@ export default function Game({ date }: { date?: string }) {
   useEffect(() => {
     fetchBoard();
   }, [fetchBoard]);
+
+  // Auth resolves asynchronously and can finish after the board already
+  // loaded (e.g. the player signs in mid-game via the finished-banner
+  // prompt) — backfill the name field then, without clobbering anything
+  // they've already typed.
+  useEffect(() => {
+    if (user?.displayName && !playerName) setPlayerName(user.displayName);
+  }, [user, playerName]);
 
   // Rotate the loading copy while the first board of the day generates.
   useEffect(() => {
@@ -313,16 +323,19 @@ export default function Game({ date }: { date?: string }) {
   }, [finished, board, leaderboard]);
 
   const submitScore = async () => {
-    if (!board || submitting) return;
+    // Sign-in is required server-side too — this guard just avoids a doomed
+    // request. The form itself is only rendered when `user` is set (below).
+    if (!board || submitting || !user) return;
     const name = playerName.replace(/\s+/g, " ").trim().slice(0, 24);
     if (!name) return;
     setSubmitting(true);
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (user) headers.Authorization = `Bearer ${await user.getIdToken()}`;
       const res = await fetch("/api/scores", {
         method: "POST",
-        headers,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${await user.getIdToken()}`,
+        },
         body: JSON.stringify({
           date: board.date,
           boardId: board.boardId,
@@ -335,7 +348,17 @@ export default function Game({ date }: { date?: string }) {
         }),
       });
       const data = await res.json();
-      if (res.status === 409) return handleBoardChanged();
+      if (data.error === "board-changed") return handleBoardChanged();
+      if (data.error === "already-submitted") {
+        // Not a failure from the player's perspective — a score for this
+        // account+date already exists (most likely this same submission,
+        // e.g. a retry), so just stop showing the form.
+        localStorage.setItem(NAME_KEY, name);
+        metaRef.current.submitted = true;
+        setSubmitted(true);
+        persist(results, score, roundIndex);
+        return;
+      }
       if (!res.ok) throw new Error(data.error ?? "Couldn't save your score.");
       localStorage.setItem(NAME_KEY, name);
       metaRef.current.submitted = true;
@@ -529,38 +552,63 @@ export default function Game({ date }: { date?: string }) {
           </div>
 
           {!submitted && !skippedSubmit && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                submitScore();
-              }}
-              className="flex flex-col sm:flex-row gap-3 justify-center items-center mb-6"
-            >
-              <input
-                value={playerName}
-                onChange={(e) => setPlayerName(e.target.value)}
-                maxLength={24}
-                placeholder="Your name"
-                className="rounded bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2 text-lg placeholder:text-blue-200/40 w-full sm:w-56"
-              />
-              <div className="flex gap-3">
-                <button
-                  type="submit"
-                  disabled={submitting || !playerName.trim()}
-                  className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded disabled:opacity-50"
-                >
-                  {submitting ? "Saving…" : "Post my score"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSkippedSubmit(true)}
-                  className="text-blue-200/60 hover:text-blue-100 px-2"
-                >
-                  Skip
-                </button>
+            user ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  submitScore();
+                }}
+                className="flex flex-col sm:flex-row gap-3 justify-center items-center mb-6"
+              >
+                <input
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  maxLength={24}
+                  placeholder="Your name"
+                  className="rounded bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2 text-lg placeholder:text-blue-200/40 w-full sm:w-56"
+                />
+                <div className="flex gap-3">
+                  <button
+                    type="submit"
+                    disabled={submitting || !playerName.trim()}
+                    className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded disabled:opacity-50"
+                  >
+                    {submitting ? "Saving…" : "Post my score"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSkippedSubmit(true)}
+                    className="text-blue-200/60 hover:text-blue-100 px-2"
+                  >
+                    Skip
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="flex flex-col items-center gap-3 mb-6">
+                <p className="text-blue-200/70 text-sm">
+                  Sign in to post your score to the leaderboard — one score per account per day.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowAuthModal(true)}
+                    className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
+                  >
+                    Sign in
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSkippedSubmit(true)}
+                    className="text-blue-200/60 hover:text-blue-100 px-2"
+                  >
+                    Skip
+                  </button>
+                </div>
               </div>
-            </form>
+            )
           )}
+          {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
           {submitted && (
             <div className="flex flex-col items-center gap-1 mb-6">
               <p className="text-green-400/90">Score posted to the leaderboard.</p>

@@ -4,8 +4,9 @@ import { percentileFor, submitScore, topScores } from "@/lib/scores";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { authAdmin } from "@/lib/firebaseAdmin";
 
-// Best-effort: an invalid/missing token just means the submission is
-// anonymous, not a rejected request — signing in is optional to play.
+// Sign-in is required to submit a score (not to play) — this is the identity
+// the one-submission-per-day rule in submitScore() keys on. An invalid or
+// missing token means POST returns 401 rather than falling back to anonymous.
 async function uidFromRequest(request: Request): Promise<string | undefined> {
   const header = request.headers.get("authorization") ?? "";
   const idToken = header.startsWith("Bearer ") ? header.slice(7) : "";
@@ -104,10 +105,17 @@ export async function POST(request: Request) {
     }
 
     const uid = await uidFromRequest(request);
+    if (!uid) {
+      return NextResponse.json({ error: "Sign in to post your score." }, { status: 401 });
+    }
+
     await submitScore(date, { name, score, correct, wrong, passed, durationMs, uid });
     const [scores, stats] = await Promise.all([topScores(date), percentileFor(date, score)]);
     return NextResponse.json({ ok: true, scores, stats });
   } catch (error) {
+    if (error instanceof Error && error.message === "already-submitted") {
+      return NextResponse.json({ error: "already-submitted" }, { status: 409 });
+    }
     console.error("Score submit failed:", error);
     return NextResponse.json({ error: "Couldn't save your score." }, { status: 500 });
   }
