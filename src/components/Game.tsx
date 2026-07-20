@@ -705,7 +705,12 @@ export default function Game({ date }: { date?: string }) {
                 <input
                   ref={wagerRef}
                   type="number"
-                  min={5}
+                  // min=0 (not 5): HTML number-input step validation requires
+                  // value = min + n*step, so min=5 + step=100 only accepts
+                  // 5, 105, 205, ... — no round number is ever valid. The
+                  // real $5 floor is enforced in submitWager()'s clamp below,
+                  // not by this attribute.
+                  min={0}
                   max={maxWager}
                   step={100}
                   value={wagerInput}
