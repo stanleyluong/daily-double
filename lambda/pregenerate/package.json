@@ -1,0 +1,10 @@
+{
+  "name": "daily-double-pregenerate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone Lambda that pre-generates each day's board on a schedule, outside Amplify's SSR request timeout.",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.3",
+    "firebase-admin": "^13.10.0"
+  }
+}
