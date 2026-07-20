@@ -9,7 +9,12 @@ import {
 } from "firebase/auth";
 import { auth } from "@/lib/firebaseClient";
 
-export default function AuthModal({ onClose }: { onClose: () => void }) {
+interface AuthModalProps {
+  onClose: () => void;
+  message?: string;
+}
+
+export default function AuthModal({ onClose, message }: AuthModalProps) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -56,9 +61,11 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
         className="w-full max-w-sm bg-board rounded-lg shadow-2xl p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="font-display text-2xl tracking-wider text-gold mb-4">
+        <p className="font-display text-2xl tracking-wider text-gold mb-1">
           {mode === "signin" ? "Sign in" : "Create account"}
         </p>
+        {message && <p className="text-sm text-blue-200/70 mb-4">{message}</p>}
+        {!message && <div className="mb-4" />}
 
         <button
           type="button"

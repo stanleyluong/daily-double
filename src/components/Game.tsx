@@ -88,6 +88,7 @@ export default function Game({ date }: { date?: string }) {
   const [leaderboard, setLeaderboard] = useState<ScoreRow[] | null>(null);
   const [stats, setStats] = useState<PercentileStats | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalMessage, setAuthModalMessage] = useState<string | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const wagerRef = useRef<HTMLInputElement>(null);
   // Timer + submission flags live in a ref so persist() never sees stale state.
@@ -279,6 +280,7 @@ export default function Game({ date }: { date?: string }) {
   const openClue = (clue: PublicClue, categoryTitle: string) => {
     if (results[clue.id]) return;
     if (!user) {
+      setAuthModalMessage("Sign in to open clues and play today's board.");
       setShowAuthModal(true);
       return;
     }
@@ -613,7 +615,10 @@ export default function Game({ date }: { date?: string }) {
                 <div className="flex gap-3">
                   <button
                     type="button"
-                    onClick={() => setShowAuthModal(true)}
+                    onClick={() => {
+                      setAuthModalMessage(undefined);
+                      setShowAuthModal(true);
+                    }}
                     className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
                   >
                     Sign in
@@ -629,7 +634,6 @@ export default function Game({ date }: { date?: string }) {
               </div>
             )
           )}
-          {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
           {submitted && (
             <div className="flex flex-col items-center gap-1 mb-6">
               <p className="text-green-400/90">Score posted to the leaderboard.</p>
@@ -798,6 +802,14 @@ export default function Game({ date }: { date?: string }) {
             )}
           </div>
         </div>
+      )}
+
+      {/* Top-level so it can open from anywhere sign-in is required — not
+          just the post-game prompt, but also clicking a clue while signed
+          out (see openClue). Nesting this inside a conditional tied to game
+          state meant it silently had nowhere to render mid-game. */}
+      {showAuthModal && (
+        <AuthModal onClose={() => setShowAuthModal(false)} message={authModalMessage} />
       )}
     </div>
   );
