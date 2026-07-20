@@ -301,9 +301,13 @@ function normalizeAnswer(answer: string): string {
 async function dedupeBoardAnswers(
   rounds: Round[],
   briefs: Map<string, CategoryBrief>,
-  harderByRound: boolean[]
+  harderByRound: boolean[],
+  historicalAnswers: string[] = []
 ): Promise<void> {
-  const seen = new Map<string, string>(); // normalized answer -> original text
+  // Seeding `seen` with recent days' answers means a clue that happens to
+  // match one gets caught by the exact same regeneration path as a
+  // within-board collision — no separate cross-day-specific logic needed.
+  const seen = new Map<string, string>(historicalAnswers.map((a) => [normalizeAnswer(a), a]));
   const MAX_TOTAL_REGENERATIONS = 8;
   let regenerations = 0;
 
@@ -436,6 +440,47 @@ Requirements:
   return parseJson<FinalClue>(message);
 }
 
+const HISTORY_LOOKBACK_DAYS = 7;
+
+function daysBefore(dateKey: string, n: number): string {
+  const d = new Date(`${dateKey}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+// generateRound()'s avoidCategories/avoidAnswers only ever carried *within*
+// one board (round 2 told round 1's picks). Nothing stopped the same
+// category concept or answer from resurfacing the very next day, since
+// every day's generateBoard() call started from a blank slate — caught when
+// an "Elements" category with "Oxygen" as an answer showed up two days
+// running. Fixed by seeding the very first generation call (and everything
+// downstream of it) with the last week's categories/answers, read directly
+// by document ID (no query, no index) rather than a Firestore query.
+async function recentHistory(
+  date: string
+): Promise<{ avoidCategories: CategoryBrief[]; avoidAnswers: string[] }> {
+  const dates = Array.from({ length: HISTORY_LOOKBACK_DAYS }, (_, i) => daysBefore(date, i + 1));
+  const snaps = await Promise.all(dates.map((d) => db().collection(BOARDS).doc(d).get()));
+
+  const avoidCategories: CategoryBrief[] = [];
+  const avoidAnswers: string[] = [];
+  for (const snap of snaps) {
+    if (!snap.exists) continue;
+    const data = snap.data()!;
+    for (const title of (data.categoryTitles as string[] | undefined) ?? []) {
+      avoidCategories.push({ title, theme: title });
+    }
+    for (const round of (data.rounds as Round[] | undefined) ?? []) {
+      for (const category of round.categories) {
+        for (const clue of category.clues) avoidAnswers.push(clue.answer);
+      }
+    }
+    const final = data.final as FinalClue | undefined;
+    if (final) avoidAnswers.push(final.answer);
+  }
+  return { avoidCategories, avoidAnswers };
+}
+
 // A board is two rounds, ~60 clues total, plus one Final Jeopardy clue. Each
 // round's category call is fast; the 6 clue calls per round run in
 // parallel, and the two rounds run sequentially (12 parallel-in-pairs calls
@@ -446,8 +491,20 @@ Requirements:
 // Final Jeopardy is generated last, told everything used so far, and gets
 // its own short collision-retry loop rather than joining the whole-board
 // dedup pass (it isn't part of any Round, so it doesn't fit that shape).
+// Every generation call is also told the last week's categories/answers
+// (see recentHistory()) so today's board doesn't repeat yesterday's.
 async function generateBoard(date: string): Promise<Board> {
-  const jeopardy = await generateRound(date, 0, "Jeopardy!", 1, 1);
+  const history = await recentHistory(date);
+
+  const jeopardy = await generateRound(
+    date,
+    0,
+    "Jeopardy!",
+    1,
+    1,
+    history.avoidCategories,
+    history.avoidAnswers
+  );
   const jeopardyAnswers = jeopardy.round.categories.flatMap((c) => c.clues.map((cl) => cl.answer));
 
   const doubleJeopardy = await generateRound(
@@ -456,8 +513,8 @@ async function generateBoard(date: string): Promise<Board> {
     "Double Jeopardy!",
     2,
     2,
-    jeopardy.briefs,
-    jeopardyAnswers
+    [...history.avoidCategories, ...jeopardy.briefs],
+    [...history.avoidAnswers, ...jeopardyAnswers]
   );
 
   const rounds = [jeopardy.round, doubleJeopardy.round];
@@ -465,10 +522,13 @@ async function generateBoard(date: string): Promise<Board> {
   jeopardy.briefs.forEach((b, c) => briefs.set(`0-${c}`, b));
   doubleJeopardy.briefs.forEach((b, c) => briefs.set(`1-${c}`, b));
 
-  await dedupeBoardAnswers(rounds, briefs, [false, true]);
+  await dedupeBoardAnswers(rounds, briefs, [false, true], history.avoidAnswers);
 
-  const allBriefs = [...jeopardy.briefs, ...doubleJeopardy.briefs];
-  const allAnswers = rounds.flatMap((r) => r.categories.flatMap((c) => c.clues.map((cl) => cl.answer)));
+  const allBriefs = [...history.avoidCategories, ...jeopardy.briefs, ...doubleJeopardy.briefs];
+  const allAnswers = [
+    ...history.avoidAnswers,
+    ...rounds.flatMap((r) => r.categories.flatMap((c) => c.clues.map((cl) => cl.answer))),
+  ];
 
   let final = await generateFinalJeopardy(date, allBriefs, allAnswers);
   const usedNorm = new Set(allAnswers.map(normalizeAnswer));
