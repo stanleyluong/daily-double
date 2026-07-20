@@ -199,6 +199,60 @@ export default function Game({ date }: { date?: string }) {
     [board]
   );
 
+  // localStorage is a fast local cache, not the source of truth — it's
+  // per-browser, so it's blank on a new device, wrong after it's cleared,
+  // and can go stale if something server-side changes outside a normal game
+  // (both bit us in practice: a manual score deletion left a stale
+  // "submitted" flag, and testing from a second origin showed a blank board
+  // for an already-completed day). Once signed in, fetch this account's
+  // actual recorded answers for the date and treat that as truth — it wins
+  // over whatever's in results/score/submitted, including overwriting to
+  // empty if the server genuinely has nothing for this uid+date. Runs once
+  // per board+account (not on every render, and not repeatedly stomping
+  // live local progress while actually playing).
+  const syncedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!board || !user) return;
+    const key = `${board.date}:${user.uid}`;
+    if (syncedKeyRef.current === key) return;
+    syncedKeyRef.current = key;
+
+    (async () => {
+      try {
+        const idToken = await user.getIdToken();
+        const res = await fetch(`/api/my-progress?date=${board.date}`, {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          results: Record<string, ClueResult>;
+          score: number;
+          submitted: boolean;
+        };
+
+        setResults(data.results);
+        setScore(data.score);
+        setSubmitted(data.submitted);
+        metaRef.current.submitted = data.submitted;
+
+        // Land on the first round that isn't fully answered yet, rather
+        // than reopening on an already-complete one.
+        let nextRoundIndex = board.rounds.length - 1;
+        for (let r = 0; r < board.rounds.length; r++) {
+          if (!roundClueIds(board, r).every((id) => id in data.results)) {
+            nextRoundIndex = r;
+            break;
+          }
+        }
+        setRoundIndex(nextRoundIndex);
+        persist(data.results, data.score, nextRoundIndex);
+      } catch {
+        // Best-effort reconciliation — if it fails, whatever's already
+        // loaded (local cache or the empty default) stands.
+      }
+    })();
+  }, [board, user, persist]);
+
   const recordResult = useCallback(
     (clue: ActiveClue, result: ClueResult) => {
       setResults((prev) => {

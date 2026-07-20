@@ -67,6 +67,11 @@ export async function submitScore(date: string, entry: NewScore): Promise<void> 
   });
 }
 
+export async function hasSubmittedScore(date: string, uid: string): Promise<boolean> {
+  const snap = await db().collection(BOARDS).doc(date).collection("scores").doc(uid).get();
+  return snap.exists;
+}
+
 export async function myScores(uid: string): Promise<MyScoreRow[]> {
   const snap = await db().collection("users").doc(uid).collection("scores").get();
   const rows: MyScoreRow[] = snap.docs.map((doc) => {
