@@ -20,7 +20,7 @@ interface JudgeRequest {
   clueId?: string;
   answer?: string;
   reveal?: boolean;
-  wager?: number; // only meaningful for a Daily Double clue; server clamps it
+  wager?: number; // only meaningful for a Daily Double or Final Jeopardy clue; server clamps it
 }
 
 async function requireUid(request: Request): Promise<string | null> {
@@ -73,11 +73,45 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "board-changed" }, { status: 409 });
     }
 
-    const found = findClue(board, clueId);
-    if (!found) {
-      return NextResponse.json({ error: "Unknown clue." }, { status: 404 });
+    // Resolve the clue + category + this clue's point value, branching on
+    // Final Jeopardy vs a grid clue. Both converge on the same shape
+    // (structural subsets judgeAnswer/recordAnsweredClue accept), so
+    // everything from here down — idempotency, judging, recording — is
+    // identical for both.
+    let clue: { clue: string; answer: string; acceptable: string[] };
+    let category: { title: string };
+    let pointValue: number;
+
+    if (clueId === "final") {
+      if (!board.final) {
+        return NextResponse.json(
+          { error: "This board has no Final Jeopardy round." },
+          { status: 404 }
+        );
+      }
+      clue = board.final;
+      category = { title: board.final.category };
+      // Real rule: wager $0 to your current total; never below $0 even if
+      // your score is negative.
+      const earnedSoFar = await scoreSoFar(uid, date);
+      const maxWager = Math.max(0, earnedSoFar);
+      const requested = typeof wager === "number" && Number.isFinite(wager) ? Math.round(wager) : 0;
+      pointValue = Math.min(maxWager, Math.max(0, requested));
+    } else {
+      const found = findClue(board, clueId);
+      if (!found) {
+        return NextResponse.json({ error: "Unknown clue." }, { status: 404 });
+      }
+      clue = found.clue;
+      category = found.category;
+      pointValue = found.clue.value;
+      if (found.clue.dailyDouble) {
+        const earnedSoFar = await scoreSoFar(uid, date);
+        const maxWager = Math.max(earnedSoFar, roundTopValue(board, found.roundIndex));
+        const requested = typeof wager === "number" && Number.isFinite(wager) ? Math.round(wager) : 5;
+        pointValue = Math.min(maxWager, Math.max(5, requested));
+      }
     }
-    const { clue, category, roundIndex } = found;
 
     // Idempotent: a clue already judged for this account+date returns the
     // recorded verdict — right, wrong, or revealed — instead of judging
@@ -91,14 +125,6 @@ export async function POST(request: Request) {
         pointValue: cached.pointValue,
         cached: true,
       });
-    }
-
-    let pointValue = clue.value;
-    if (clue.dailyDouble) {
-      const earnedSoFar = await scoreSoFar(uid, date);
-      const maxWager = Math.max(earnedSoFar, roundTopValue(board, roundIndex));
-      const requested = typeof wager === "number" && Number.isFinite(wager) ? Math.round(wager) : 5;
-      pointValue = Math.min(maxWager, Math.max(5, requested));
     }
 
     if (reveal) {

@@ -24,10 +24,25 @@ export interface Round {
   categories: Category[];
 }
 
+// No fixed dollar value — entirely wager-driven, like the real thing.
+export interface FinalClue {
+  category: string;
+  clue: string;
+  answer: string;
+  acceptable: string[];
+}
+
 export interface Board {
   boardId: string;
   date: string;
   rounds: Round[]; // [0] = Jeopardy!, [1] = Double Jeopardy!
+  // Optional: boards generated before Final Jeopardy shipped don't have
+  // this. Every board created from now on always does — getBoardForDate()
+  // never omits it for a freshly-generated board, only when reading an
+  // older persisted doc. Everything downstream (totalClueCount, the client
+  // UI) treats its absence as "this board has no Final Jeopardy round"
+  // rather than an error, so in-progress games on old boards aren't broken.
+  final?: FinalClue;
 }
 
 // What the browser is allowed to see — no answers. `dailyDouble` IS included:
@@ -35,12 +50,18 @@ export interface Board {
 // cosmetic surprise, and this is a casual portfolio game — the client
 // withholds rendering the clue text until a wager is placed, which is
 // enough to preserve the "wager blind" experience for anyone actually
-// playing rather than reading network traffic.
+// playing rather than reading network traffic. Same trust model applies to
+// PublicFinalClue's `clue` field.
 export interface PublicClue {
   id: string;
   value: number;
   clue: string;
   dailyDouble: boolean;
+}
+
+export interface PublicFinalClue {
+  category: string;
+  clue: string;
 }
 
 export interface PublicRound {
@@ -52,6 +73,7 @@ export interface PublicBoard {
   boardId: string;
   date: string;
   rounds: PublicRound[];
+  final?: PublicFinalClue;
 }
 
 function client(): Anthropic {
@@ -125,6 +147,18 @@ const SINGLE_CLUE_SCHEMA = {
     acceptable: { type: "array", items: { type: "string" } },
   },
   required: ["clue", "answer", "acceptable"],
+  additionalProperties: false,
+} as const;
+
+const FINAL_SCHEMA = {
+  type: "object",
+  properties: {
+    category: { type: "string" },
+    clue: { type: "string" },
+    answer: { type: "string" },
+    acceptable: { type: "array", items: { type: "string" } },
+  },
+  required: ["category", "clue", "answer", "acceptable"],
   additionalProperties: false,
 } as const;
 
@@ -362,13 +396,56 @@ async function generateRound(
   return { round: { name, categories }, briefs: categoryBriefs };
 }
 
-// A board is two rounds, ~60 clues total. Each round's category call is fast;
-// the 6 clue calls per round run in parallel, and the two rounds run
-// sequentially (12 parallel-in-pairs calls total) to stay well inside
-// Amplify's SSR response window without one giant fan-out. Round 2 is told
-// round 1's categories and answers to steer away from repeats at the
-// source; the dedup pass afterward is the backstop for whatever gets
-// through anyway (including within-round collisions).
+async function generateFinalJeopardy(
+  date: string,
+  avoidCategories: CategoryBrief[],
+  avoidAnswers: string[]
+): Promise<FinalClue> {
+  const message = await client().messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    output_config: { format: { type: "json_schema", schema: FINAL_SCHEMA } },
+    system:
+      "You are the head writer for a Jeopardy!-style trivia game. You write the single hardest, most memorable clue of the day for the Final Jeopardy round.",
+    messages: [
+      {
+        role: "user",
+        content: `Write the Final Jeopardy category and clue for the daily board of ${date}.
+
+Requirements:
+- This is the single hardest clue of the entire board — broader and more challenging than anything in the Double Jeopardy round, the kind that rewards deep general knowledge.
+- Favor a category and clue a well-informed adult could reason their way to, even without knowing the fact outright — Final Jeopardy rewards logic and partial knowledge, not just pure recall.
+- The category name alone should be evocative without giving away the answer.
+- Jeopardy! style: a declarative statement or description; the player responds with the answer.
+- The answer must be short (a name, term, title, or place — not a sentence) and factually correct beyond doubt.
+- "acceptable" lists alternate correct forms; empty array if none.
+- Never include the answer text inside its own clue.${
+          avoidCategories.length > 0
+            ? `\n- Do not repeat the subject matter of these categories already used today:\n${avoidCategories
+                .map((c) => `  - "${c.title}": ${c.theme}`)
+                .join("\n")}`
+            : ""
+        }${
+          avoidAnswers.length > 0
+            ? `\n- The answer must not be, or closely resemble, any of these already used today: ${avoidAnswers.join("; ")}`
+            : ""
+        }`,
+      },
+    ],
+  });
+  return parseJson<FinalClue>(message);
+}
+
+// A board is two rounds, ~60 clues total, plus one Final Jeopardy clue. Each
+// round's category call is fast; the 6 clue calls per round run in
+// parallel, and the two rounds run sequentially (12 parallel-in-pairs calls
+// total) to stay well inside Amplify's SSR response window without one
+// giant fan-out. Round 2 is told round 1's categories and answers to steer
+// away from repeats at the source; the dedup pass afterward is the backstop
+// for whatever gets through anyway (including within-round collisions).
+// Final Jeopardy is generated last, told everything used so far, and gets
+// its own short collision-retry loop rather than joining the whole-board
+// dedup pass (it isn't part of any Round, so it doesn't fit that shape).
 async function generateBoard(date: string): Promise<Board> {
   const jeopardy = await generateRound(date, 0, "Jeopardy!", 1, 1);
   const jeopardyAnswers = jeopardy.round.categories.flatMap((c) => c.clues.map((cl) => cl.answer));
@@ -390,7 +467,16 @@ async function generateBoard(date: string): Promise<Board> {
 
   await dedupeBoardAnswers(rounds, briefs, [false, true]);
 
-  return { boardId: randomUUID(), date, rounds };
+  const allBriefs = [...jeopardy.briefs, ...doubleJeopardy.briefs];
+  const allAnswers = rounds.flatMap((r) => r.categories.flatMap((c) => c.clues.map((cl) => cl.answer)));
+
+  let final = await generateFinalJeopardy(date, allBriefs, allAnswers);
+  const usedNorm = new Set(allAnswers.map(normalizeAnswer));
+  for (let attempt = 0; usedNorm.has(normalizeAnswer(final.answer)) && attempt < 3; attempt++) {
+    final = await generateFinalJeopardy(date, allBriefs, [...allAnswers, final.answer]);
+  }
+
+  return { boardId: randomUUID(), date, rounds, final };
 }
 
 // Everyone worldwide plays the same board; the day rolls over on US Pacific time.
@@ -411,7 +497,9 @@ const BOARDS = "jeopardyBoards";
 const memo = new Map<string, Board>();
 
 function boardFromDoc(data: FirebaseFirestore.DocumentData): Board {
-  return { boardId: data.boardId, date: data.date, rounds: data.rounds };
+  // `final` is undefined for boards persisted before Final Jeopardy shipped
+  // — that's expected, not an error (see the Board.final doc comment).
+  return { boardId: data.boardId, date: data.date, rounds: data.rounds, final: data.final };
 }
 
 // Returns the board for a date: from memo, then Firestore. Only today's board
@@ -436,6 +524,7 @@ export async function getBoardForDate(date: string): Promise<Board | null> {
       boardId: board.boardId,
       date: board.date,
       rounds: board.rounds,
+      final: board.final,
       categoryTitles: board.rounds.flatMap((r) => r.categories.map((c) => c.title)),
       createdAt: FieldValue.serverTimestamp(),
     });
@@ -484,6 +573,7 @@ export function toPublicBoard(board: Board): PublicBoard {
         clues: cat.clues.map(({ id, value, clue, dailyDouble }) => ({ id, value, clue, dailyDouble })),
       })),
     })),
+    final: board.final ? { category: board.final.category, clue: board.final.clue } : undefined,
   };
 }
 
@@ -501,10 +591,11 @@ export function findClue(
 }
 
 export function totalClueCount(board: Board): number {
-  return board.rounds.reduce(
+  const gridClues = board.rounds.reduce(
     (n, round) => n + round.categories.reduce((m, cat) => m + cat.clues.length, 0),
     0
   );
+  return gridClues + (board.final ? 1 : 0);
 }
 
 export function roundTopValue(board: Board, roundIndex: number): number {
@@ -512,9 +603,13 @@ export function roundTopValue(board: Board, roundIndex: number): number {
   return round ? Math.max(...round.categories.flatMap((c) => c.clues.map((cl) => cl.value))) : 0;
 }
 
+// Deliberately typed as structural subsets of Category/Clue (title-only;
+// clue/answer/acceptable-only) rather than the full interfaces, so the
+// Final Jeopardy clue — which has no `id`/`value`/`dailyDouble` — can reuse
+// this without being force-fit into the grid-clue shape.
 export async function judgeAnswer(
-  category: Category,
-  clue: Clue,
+  category: { title: string },
+  clue: { clue: string; answer: string; acceptable: string[] },
   playerAnswer: string
 ): Promise<{ correct: boolean; comment: string }> {
   const message = await client().messages.create({

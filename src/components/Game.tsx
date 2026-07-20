@@ -33,6 +33,7 @@ interface SavedGame {
 interface ActiveClue extends PublicClue {
   categoryTitle: string;
   wager?: number;
+  isFinal?: boolean;
 }
 
 const NAME_KEY = "daily-double-name";
@@ -99,7 +100,9 @@ export default function Game({ date }: { date?: string }) {
   });
 
   const totalClues = useMemo(
-    () => board?.rounds.reduce((n, r) => n + r.categories.reduce((m, c) => m + c.clues.length, 0), 0) ?? 0,
+    () =>
+      (board?.rounds.reduce((n, r) => n + r.categories.reduce((m, c) => m + c.clues.length, 0), 0) ?? 0) +
+      (board?.final ? 1 : 0),
     [board]
   );
   const answeredCount = Object.keys(results).length;
@@ -252,7 +255,7 @@ export default function Game({ date }: { date?: string }) {
                   boardId: board.boardId,
                   clueId: active.id,
                   answer,
-                  wager: active.dailyDouble ? active.wager : undefined,
+                  wager: active.dailyDouble || active.isFinal ? active.wager : undefined,
                 }
           ),
         });
@@ -292,16 +295,42 @@ export default function Game({ date }: { date?: string }) {
     setPhase(clue.dailyDouble ? "wager" : "answering");
   };
 
+  const openFinalJeopardy = () => {
+    if (!board?.final || results.final) return;
+    if (!user) {
+      setAuthModalMessage("Sign in to play Final Jeopardy.");
+      setShowAuthModal(true);
+      return;
+    }
+    if (metaRef.current.startedAt === null) metaRef.current.startedAt = Date.now();
+    setActive({
+      id: "final",
+      value: 0,
+      clue: board.final.clue,
+      dailyDouble: false,
+      isFinal: true,
+      categoryTitle: board.final.category,
+    });
+    setInput("");
+    setWagerInput("");
+    setVerdict(null);
+    setPhase("wager");
+  };
+
   const roundMaxValue = (roundIndex + 1) * 1000; // 1000 for round 1, 2000 for round 2
-  const maxWager = Math.max(score, roundMaxValue);
+  // Final Jeopardy: wager $0 to your current score, real-rules — never a
+  // $5 floor, and never more than you've actually got (unlike a Daily
+  // Double, there's no round-value floor to fall back on).
+  const minWager = active?.isFinal ? 0 : 5;
+  const maxWager = active?.isFinal ? Math.max(0, score) : Math.max(score, roundMaxValue);
 
   const submitWager = (e: React.FormEvent) => {
     e.preventDefault();
     if (!active) return;
-    // Any whole dollar amount, matching real Daily Double rules — no
+    // Any whole dollar amount, matching real wager rules — no
     // round-hundreds restriction.
     const raw = Math.round(Number(wagerInput));
-    const wager = Math.min(maxWager, Math.max(5, Number.isFinite(raw) && raw > 0 ? raw : 5));
+    const wager = Math.min(maxWager, Math.max(minWager, Number.isFinite(raw) && raw >= 0 ? raw : minWager));
     setActive({ ...active, wager });
     setPhase("answering");
   };
@@ -414,6 +443,17 @@ export default function Game({ date }: { date?: string }) {
         );
       }
     }
+    if (board.final) {
+      const finalResult = results.final;
+      const finalEmoji = finalResult
+        ? finalResult.outcome === "correct"
+          ? "🟩"
+          : finalResult.outcome === "wrong"
+            ? "🟥"
+            : "⬜"
+        : "⬛";
+      rows.push(`FJ ${finalEmoji}`);
+    }
     const text = `Daily Double ${board.date}\n${formatMoney(score)}\n${rows.join("\n")}`;
     try {
       await navigator.clipboard.writeText(text);
@@ -501,12 +541,21 @@ export default function Game({ date }: { date?: string }) {
           <p className="text-blue-200/70 mb-6">
             Score so far: <span className="text-gold">{formatMoney(score)}</span>
           </p>
-          <button
-            onClick={advanceRound}
-            className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
-          >
-            Continue to {board.rounds[roundIndex + 1]?.name} — values double →
-          </button>
+          {roundIndex + 1 < board.rounds.length ? (
+            <button
+              onClick={advanceRound}
+              className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
+            >
+              Continue to {board.rounds[roundIndex + 1]?.name} — values double →
+            </button>
+          ) : (
+            <button
+              onClick={openFinalJeopardy}
+              className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
+            >
+              Continue to Final Jeopardy →
+            </button>
+          )}
         </div>
       ) : (
         /* Board */
@@ -696,21 +745,22 @@ export default function Game({ date }: { date?: string }) {
             {phase === "wager" ? (
               <form onSubmit={submitWager} className="text-center">
                 <p className="font-display text-4xl tracking-widest text-gold mb-1 animate-pulse">
-                  DAILY DOUBLE!
+                  {active.isFinal ? "FINAL JEOPARDY!" : "DAILY DOUBLE!"}
                 </p>
                 <p className="text-blue-200/70 mb-6">
                   Category: <span className="text-foreground">{active.categoryTitle}</span>
                 </p>
                 <label className="block text-sm text-blue-200/70 mb-2">
-                  Wager between $5 and ${maxWager.toLocaleString()}
+                  Wager between ${minWager} and ${maxWager.toLocaleString()}
                 </label>
                 <input
                   ref={wagerRef}
                   type="number"
-                  // step=1: real Daily Doubles allow any whole-dollar wager,
-                  // not just round hundreds. With step=1, min=5 is safe again
-                  // (no step-alignment gap) — every integer >= 5 validates.
-                  min={5}
+                  // step=1: real wager rules allow any whole-dollar amount,
+                  // not just round hundreds. With step=1, a non-zero min is
+                  // safe (no step-alignment gap) — every integer in range
+                  // validates.
+                  min={minWager}
                   max={maxWager}
                   step={1}
                   value={wagerInput}
@@ -729,8 +779,11 @@ export default function Game({ date }: { date?: string }) {
               <>
                 <p className="font-display tracking-wider text-gold uppercase mb-1">
                   {active.categoryTitle} · $
-                  {active.dailyDouble && active.wager ? active.wager.toLocaleString() : active.value}
+                  {(active.dailyDouble || active.isFinal) && active.wager !== undefined
+                    ? active.wager.toLocaleString()
+                    : active.value}
                   {active.dailyDouble && " · DAILY DOUBLE"}
+                  {active.isFinal && " · FINAL JEOPARDY"}
                 </p>
                 <p className="text-xl md:text-2xl leading-snug my-6">{active.clue}</p>
 
@@ -820,7 +873,8 @@ export default function Game({ date }: { date?: string }) {
                         onClick={closeClue}
                         className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
                       >
-                        Back to board <span className="opacity-60">⏎</span>
+                        {active.isFinal ? "See final results" : "Back to board"}{" "}
+                        <span className="opacity-60">⏎</span>
                       </button>
                     </div>
                   </div>
