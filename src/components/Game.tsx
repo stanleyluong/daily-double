@@ -75,6 +75,7 @@ export default function Game({ date }: { date?: string }) {
   const [results, setResults] = useState<Record<string, ClueResult>>({});
   const [score, setScore] = useState(0);
   const [roundIndex, setRoundIndex] = useState(0);
+  const [openMobileCategory, setOpenMobileCategory] = useState<string | null>(null);
   const [active, setActive] = useState<ActiveClue | null>(null);
   const [phase, setPhase] = useState<"wager" | "answering" | "judging" | "result">("answering");
   const [wagerInput, setWagerInput] = useState("");
@@ -358,6 +359,7 @@ export default function Game({ date }: { date?: string }) {
     if (!board) return;
     const next = roundIndex + 1;
     setRoundIndex(next);
+    setOpenMobileCategory(null);
     persist(results, score, next);
   };
 
@@ -559,57 +561,122 @@ export default function Game({ date }: { date?: string }) {
         </div>
       ) : (
         /* Board */
-        <div className="overflow-x-auto pb-2">
-          <div className="grid grid-cols-6 gap-1.5 min-w-[680px]">
-            {round.categories.map((cat) => (
-              <div
-                key={cat.title}
-                className="bg-board-deep rounded-sm flex items-center justify-center p-2 min-h-[72px] text-center"
-              >
-                <span className="font-display tracking-wide text-sm md:text-base leading-tight uppercase">
-                  {cat.title}
-                </span>
-              </div>
-            ))}
-            {Array.from({ length: 5 }).map((_, row) =>
-              round.categories.map((cat) => {
-                const clue = cat.clues[row];
-                if (!clue) return <div key={`${cat.title}-${row}`} />;
-                const result = results[clue.id];
-                return (
+        <>
+          {/* Mobile: a 6-column grid at that width is either too cramped to
+              tap or forces horizontal scrolling either way, so below `sm`
+              it's a per-category accordion instead — tap a category to
+              expand its 5 clues as a vertical strip. Same openClue() click
+              handler as the grid below; just a different layout. */}
+          <div className="sm:hidden space-y-1.5">
+            {round.categories.map((cat) => {
+              const isOpen = openMobileCategory === cat.title;
+              const answeredInCat = cat.clues.filter((c) => results[c.id]).length;
+              return (
+                <div key={cat.title} className="bg-board-deep rounded-sm overflow-hidden">
                   <button
-                    key={clue.id}
-                    onClick={() => openClue(clue, cat.title)}
-                    disabled={!!result}
-                    className={`rounded-sm min-h-[64px] md:min-h-[76px] flex items-center justify-center transition-colors ${
-                      result
-                        ? "bg-board/30 cursor-default"
-                        : "bg-board hover:bg-board-deep cursor-pointer"
-                    }`}
+                    onClick={() => setOpenMobileCategory(isOpen ? null : cat.title)}
+                    className="w-full flex items-center justify-between gap-2 p-3 text-left"
                   >
-                    {result ? (
-                      <span
-                        className={`text-xl ${
-                          result.outcome === "correct"
-                            ? "text-green-400"
-                            : result.outcome === "wrong"
-                              ? "text-red-400"
-                              : "text-blue-200/40"
-                        }`}
-                      >
-                        {result.outcome === "correct" ? "✓" : result.outcome === "wrong" ? "✗" : "–"}
-                      </span>
-                    ) : (
-                      <span className="font-display text-2xl md:text-3xl text-gold tracking-wide">
-                        ${clue.value}
-                      </span>
-                    )}
+                    <span className="font-display tracking-wide text-sm leading-tight uppercase">
+                      {cat.title}
+                    </span>
+                    <span className="text-xs text-blue-200/50 shrink-0">
+                      {answeredInCat}/{cat.clues.length}
+                    </span>
                   </button>
-                );
-              })
-            )}
+                  {isOpen && (
+                    <div className="grid grid-cols-5 gap-1.5 p-2 pt-0">
+                      {cat.clues.map((clue) => {
+                        const result = results[clue.id];
+                        return (
+                          <button
+                            key={clue.id}
+                            onClick={() => openClue(clue, cat.title)}
+                            disabled={!!result}
+                            className={`rounded-sm min-h-[52px] flex items-center justify-center transition-colors ${
+                              result ? "bg-board/30 cursor-default" : "bg-board active:bg-board/70 cursor-pointer"
+                            }`}
+                          >
+                            {result ? (
+                              <span
+                                className={`text-lg ${
+                                  result.outcome === "correct"
+                                    ? "text-green-400"
+                                    : result.outcome === "wrong"
+                                      ? "text-red-400"
+                                      : "text-blue-200/40"
+                                }`}
+                              >
+                                {result.outcome === "correct" ? "✓" : result.outcome === "wrong" ? "✗" : "–"}
+                              </span>
+                            ) : (
+                              <span className="font-display text-sm text-gold tracking-wide">
+                                ${clue.value}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </div>
+
+          {/* sm and up: the full grid, unchanged */}
+          <div className="hidden sm:block overflow-x-auto pb-2">
+            <div className="grid grid-cols-6 gap-1.5 min-w-[680px]">
+              {round.categories.map((cat) => (
+                <div
+                  key={cat.title}
+                  className="bg-board-deep rounded-sm flex items-center justify-center p-2 min-h-[72px] text-center"
+                >
+                  <span className="font-display tracking-wide text-sm md:text-base leading-tight uppercase">
+                    {cat.title}
+                  </span>
+                </div>
+              ))}
+              {Array.from({ length: 5 }).map((_, row) =>
+                round.categories.map((cat) => {
+                  const clue = cat.clues[row];
+                  if (!clue) return <div key={`${cat.title}-${row}`} />;
+                  const result = results[clue.id];
+                  return (
+                    <button
+                      key={clue.id}
+                      onClick={() => openClue(clue, cat.title)}
+                      disabled={!!result}
+                      className={`rounded-sm min-h-[64px] md:min-h-[76px] flex items-center justify-center transition-colors ${
+                        result
+                          ? "bg-board/30 cursor-default"
+                          : "bg-board hover:bg-board-deep cursor-pointer"
+                      }`}
+                    >
+                      {result ? (
+                        <span
+                          className={`text-xl ${
+                            result.outcome === "correct"
+                              ? "text-green-400"
+                              : result.outcome === "wrong"
+                                ? "text-red-400"
+                                : "text-blue-200/40"
+                          }`}
+                        >
+                          {result.outcome === "correct" ? "✓" : result.outcome === "wrong" ? "✗" : "–"}
+                        </span>
+                      ) : (
+                        <span className="font-display text-2xl md:text-3xl text-gold tracking-wide">
+                          ${clue.value}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {/* Final banner: score, name submission, leaderboard */}
