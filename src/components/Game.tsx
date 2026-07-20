@@ -298,7 +298,9 @@ export default function Game({ date }: { date?: string }) {
   const submitWager = (e: React.FormEvent) => {
     e.preventDefault();
     if (!active) return;
-    const raw = Math.round(Number(wagerInput) / 100) * 100;
+    // Any whole dollar amount, matching real Daily Double rules — no
+    // round-hundreds restriction.
+    const raw = Math.round(Number(wagerInput));
     const wager = Math.min(maxWager, Math.max(5, Number.isFinite(raw) && raw > 0 ? raw : 5));
     setActive({ ...active, wager });
     setPhase("answering");
@@ -705,14 +707,12 @@ export default function Game({ date }: { date?: string }) {
                 <input
                   ref={wagerRef}
                   type="number"
-                  // min=0 (not 5): HTML number-input step validation requires
-                  // value = min + n*step, so min=5 + step=100 only accepts
-                  // 5, 105, 205, ... — no round number is ever valid. The
-                  // real $5 floor is enforced in submitWager()'s clamp below,
-                  // not by this attribute.
-                  min={0}
+                  // step=1: real Daily Doubles allow any whole-dollar wager,
+                  // not just round hundreds. With step=1, min=5 is safe again
+                  // (no step-alignment gap) — every integer >= 5 validates.
+                  min={5}
                   max={maxWager}
-                  step={100}
+                  step={1}
                   value={wagerInput}
                   onChange={(e) => setWagerInput(e.target.value)}
                   placeholder={`e.g. ${Math.min(maxWager, 1000)}`}
