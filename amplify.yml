@@ -7,8 +7,10 @@ frontend:
     build:
       commands:
         # Amplify only exposes env vars to the build by default; .env.production
-        # makes ANTHROPIC_API_KEY available to the SSR compute at runtime.
-        - env | grep -e ANTHROPIC_API_KEY >> .env.production || true
+        # makes these available to the SSR compute at runtime too. NEXT_PUBLIC_*
+        # vars don't need this — Next.js already inlines them into the client
+        # bundle during the build phase, where Amplify's env vars are visible.
+        - env | grep -e ANTHROPIC_API_KEY -e FIREBASE_SERVICE_ACCOUNT_BASE64 >> .env.production || true
         - npm run build
   artifacts:
     baseDirectory: .next
