@@ -38,6 +38,16 @@ still beats the schedule, or if the schedule fires more than once.
   failure.
 - **Scheduler role**: `daily-double-pregenerate-scheduler-role` — grants
   `scheduler.amazonaws.com` `lambda:InvokeFunction` on this function only.
+- **Alerting**: CloudWatch alarm `daily-double-pregenerate-errors` on this
+  function's `Errors` metric (namespace `AWS/Lambda`), `Sum >= 1` over a
+  24-hour period, `treat-missing-data notBreaching`. Notifies SNS topic
+  `daily-double-pregenerate-alerts` (email to `slluong@uw.edu` + SMS to the
+  owner's phone). Cost is ~$0.10/month flat for the alarm; notifications are
+  free (email) or a few cents each (SMS), and only fire on an actual error.
+  Known gap: this only catches the Lambda *erroring* — if the schedule
+  itself stops firing (deleted, IAM broken), there'd be zero invocations and
+  zero errors, so no alarm. Not currently covered; would need a second
+  alarm on the `Invocations` metric with `treat-missing-data breaching`.
 
 ## Redeploying after a code change
 
