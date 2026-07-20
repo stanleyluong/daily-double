@@ -758,8 +758,30 @@ export default function Game({ date }: { date?: string }) {
                       <button
                         type="submit"
                         disabled={phase === "judging" || !input.trim()}
-                        className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded disabled:opacity-50"
+                        className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded disabled:opacity-50 inline-flex items-center gap-2"
                       >
+                        {phase === "judging" && (
+                          <svg
+                            className="animate-spin h-4 w-4 text-board-deep"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            aria-hidden="true"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            />
+                            <path
+                              className="opacity-90"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                            />
+                          </svg>
+                        )}
                         {phase === "judging" ? "Judges…" : "Submit"}
                       </button>
                     </div>
