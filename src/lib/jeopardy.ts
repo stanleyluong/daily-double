@@ -117,11 +117,28 @@ const JUDGE_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+const SINGLE_CLUE_SCHEMA = {
+  type: "object",
+  properties: {
+    clue: { type: "string" },
+    answer: { type: "string" },
+    acceptable: { type: "array", items: { type: "string" } },
+  },
+  required: ["clue", "answer", "acceptable"],
+  additionalProperties: false,
+} as const;
+
+interface CategoryBrief {
+  title: string;
+  theme: string;
+}
+
 async function generateCategories(
   date: string,
   roundLabel: string,
-  harder: boolean
-): Promise<{ title: string; theme: string }[]> {
+  harder: boolean,
+  avoidCategories: CategoryBrief[] = []
+): Promise<CategoryBrief[]> {
   const message = await client().messages.create({
     model: MODEL,
     max_tokens: 1024,
@@ -141,11 +158,17 @@ Requirements:
           harder
             ? "\n- This is the second (harder) round: categories should be a notch more specific or advanced than a first-round board, the way real Double Jeopardy! categories go deeper than the first round."
             : ""
+        }${
+          avoidCategories.length > 0
+            ? `\n- This board already has these categories from an earlier round — do not repeat their subject matter, and do not create another category centered on the same core topic (e.g. if "Rivers of the World" already exists, don't also write a geography category built around rivers):\n${avoidCategories
+                .map((c) => `  - "${c.title}": ${c.theme}`)
+                .join("\n")}`
+            : ""
         }`,
       },
     ],
   });
-  const { categories } = parseJson<{ categories: { title: string; theme: string }[] }>(message);
+  const { categories } = parseJson<{ categories: CategoryBrief[] }>(message);
   if (!Array.isArray(categories) || categories.length < 6) {
     throw new Error("Model returned fewer than 6 categories");
   }
@@ -153,8 +176,9 @@ Requirements:
 }
 
 async function generateClues(
-  category: { title: string; theme: string },
-  harder: boolean
+  category: CategoryBrief,
+  harder: boolean,
+  avoidAnswers: string[] = []
 ): Promise<{ clue: string; answer: string; acceptable: string[] }[]> {
   const message = await client().messages.create({
     model: MODEL,
@@ -177,7 +201,12 @@ Requirements:
         }
 - Answers must be short (a name, term, title, or place — not a sentence) and factually correct beyond doubt. Do not write clues you are not certain about.
 - "acceptable" lists alternate correct forms: last name only, common nicknames, alternate spellings, with/without articles. Empty array if none.
-- Never include the answer text inside its own clue.`,
+- Never include the answer text inside its own clue.
+- No two clues in this set may share the same answer, even worded differently.${
+          avoidAnswers.length > 0
+            ? `\n- These answers are already used elsewhere on today's board — none of your 5 answers may match or closely resemble any of them: ${avoidAnswers.join("; ")}`
+            : ""
+        }`,
       },
     ],
   });
@@ -186,6 +215,94 @@ Requirements:
     throw new Error(`Model returned fewer than 5 clues for "${category.title}"`);
   }
   return clues.slice(0, 5);
+}
+
+// Single-clue replacement, used only when the whole-board dedup pass below
+// finds an answer collision that slipped past the avoid-lists above.
+async function regenerateClue(
+  category: CategoryBrief,
+  value: number,
+  harder: boolean,
+  avoidAnswers: string[]
+): Promise<{ clue: string; answer: string; acceptable: string[] }> {
+  const message = await client().messages.create({
+    model: MODEL,
+    max_tokens: 512,
+    output_config: { format: { type: "json_schema", schema: SINGLE_CLUE_SCHEMA } },
+    system:
+      "You are the head writer for a Jeopardy!-style trivia game. Your clues are factually accurate, unambiguous, and fun.",
+    messages: [
+      {
+        role: "user",
+        content: `Write one replacement clue for the category "${category.title}" worth $${value}.
+Theme brief: ${category.theme}
+
+None of these answers, already used elsewhere on today's board, may be the answer here — pick a different fact within the category: ${avoidAnswers.join("; ")}
+
+Requirements:
+- Jeopardy! style: a declarative statement or description; the player responds with the answer.
+- ${harder ? "This is the harder, second-round difficulty band." : "Gettable by a general trivia audience."}
+- The answer must be short (a name, term, title, or place — not a sentence) and factually correct beyond doubt.
+- "acceptable" lists alternate correct forms; empty array if none.
+- Never include the answer text inside its own clue.`,
+      },
+    ],
+  });
+  return parseJson<{ clue: string; answer: string; acceptable: string[] }>(message);
+}
+
+function normalizeAnswer(answer: string): string {
+  return answer
+    .toLowerCase()
+    .replace(/^(the|a|an)\s+/i, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+// Runs after both rounds are fully generated. Catches any answer collision
+// that got past the round-2 avoid-lists (including within a single round,
+// since `seen` accumulates across the whole board) and regenerates just the
+// later-occurring clue — the earlier one is left alone. Cheap in the common
+// case (zero API calls when there are no collisions); bounded overall so a
+// pathological run can't loop indefinitely.
+async function dedupeBoardAnswers(
+  rounds: Round[],
+  briefs: Map<string, CategoryBrief>,
+  harderByRound: boolean[]
+): Promise<void> {
+  const seen = new Map<string, string>(); // normalized answer -> original text
+  const MAX_TOTAL_REGENERATIONS = 8;
+  let regenerations = 0;
+
+  for (let r = 0; r < rounds.length; r++) {
+    for (let c = 0; c < rounds[r].categories.length; c++) {
+      const category = rounds[r].categories[c];
+      const brief = briefs.get(`${r}-${c}`);
+      for (const clue of category.clues) {
+        let norm = normalizeAnswer(clue.answer);
+        let attempts = 0;
+        while (seen.has(norm) && brief && attempts < 3 && regenerations < MAX_TOTAL_REGENERATIONS) {
+          attempts++;
+          regenerations++;
+          try {
+            const replacement = await regenerateClue(
+              brief,
+              clue.value,
+              harderByRound[r],
+              Array.from(seen.values())
+            );
+            clue.clue = replacement.clue;
+            clue.answer = replacement.answer;
+            clue.acceptable = replacement.acceptable ?? [];
+            norm = normalizeAnswer(clue.answer);
+          } catch (error) {
+            console.error("Clue regeneration failed; keeping the duplicate:", error);
+            break;
+          }
+        }
+        seen.set(norm, clue.answer);
+      }
+    }
+  }
 }
 
 // Real-rules approximation: Daily Doubles never land in the top ($200/$400)
@@ -219,11 +336,15 @@ async function generateRound(
   roundIndex: number,
   name: string,
   multiplier: number,
-  dailyDoubleCount: number
-): Promise<Round> {
+  dailyDoubleCount: number,
+  avoidCategories: CategoryBrief[] = [],
+  avoidAnswers: string[] = []
+): Promise<{ round: Round; briefs: CategoryBrief[] }> {
   const harder = multiplier > 1;
-  const categoryBriefs = await generateCategories(date, name, harder);
-  const clueSets = await Promise.all(categoryBriefs.map((c) => generateClues(c, harder)));
+  const categoryBriefs = await generateCategories(date, name, harder, avoidCategories);
+  const clueSets = await Promise.all(
+    categoryBriefs.map((c) => generateClues(c, harder, avoidAnswers))
+  );
 
   const categories: Category[] = categoryBriefs.map((brief, c) => ({
     title: brief.title,
@@ -238,17 +359,38 @@ async function generateRound(
   }));
 
   placeDailyDoubles(categories, dailyDoubleCount);
-  return { name, categories };
+  return { round: { name, categories }, briefs: categoryBriefs };
 }
 
 // A board is two rounds, ~60 clues total. Each round's category call is fast;
 // the 6 clue calls per round run in parallel, and the two rounds run
 // sequentially (12 parallel-in-pairs calls total) to stay well inside
-// Amplify's SSR response window without one giant fan-out.
+// Amplify's SSR response window without one giant fan-out. Round 2 is told
+// round 1's categories and answers to steer away from repeats at the
+// source; the dedup pass afterward is the backstop for whatever gets
+// through anyway (including within-round collisions).
 async function generateBoard(date: string): Promise<Board> {
   const jeopardy = await generateRound(date, 0, "Jeopardy!", 1, 1);
-  const doubleJeopardy = await generateRound(date, 1, "Double Jeopardy!", 2, 2);
-  return { boardId: randomUUID(), date, rounds: [jeopardy, doubleJeopardy] };
+  const jeopardyAnswers = jeopardy.round.categories.flatMap((c) => c.clues.map((cl) => cl.answer));
+
+  const doubleJeopardy = await generateRound(
+    date,
+    1,
+    "Double Jeopardy!",
+    2,
+    2,
+    jeopardy.briefs,
+    jeopardyAnswers
+  );
+
+  const rounds = [jeopardy.round, doubleJeopardy.round];
+  const briefs = new Map<string, CategoryBrief>();
+  jeopardy.briefs.forEach((b, c) => briefs.set(`0-${c}`, b));
+  doubleJeopardy.briefs.forEach((b, c) => briefs.set(`1-${c}`, b));
+
+  await dedupeBoardAnswers(rounds, briefs, [false, true]);
+
+  return { boardId: randomUUID(), date, rounds };
 }
 
 // Everyone worldwide plays the same board; the day rolls over on US Pacific time.
