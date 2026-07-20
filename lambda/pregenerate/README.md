@@ -41,9 +41,14 @@ still beats the schedule, or if the schedule fires more than once.
 - **Alerting**: CloudWatch alarm `daily-double-pregenerate-errors` on this
   function's `Errors` metric (namespace `AWS/Lambda`), `Sum >= 1` over a
   24-hour period, `treat-missing-data notBreaching`. Notifies SNS topic
-  `daily-double-pregenerate-alerts` (email to `slluong@uw.edu` + SMS to the
-  owner's phone). Cost is ~$0.10/month flat for the alarm; notifications are
-  free (email) or a few cents each (SMS), and only fire on an actual error.
+  `daily-double-pregenerate-alerts` — email to `slluong@uw.edu` only. Cost
+  is ~$0.10/month flat for the alarm; email notifications are free (under
+  SNS's 1,000/month free tier) and only fire on an actual error.
+  SMS was tried and dropped: this AWS account has no SMS origination
+  identity configured (`No origination entities available to send` — not
+  just the usual sandbox-verification step, a harder blocker), and fixing
+  that means registering a paid toll-free number or a full 10DLC campaign —
+  disproportionate cost/effort for one personal alert. Email only.
   Known gap: this only catches the Lambda *erroring* — if the schedule
   itself stops firing (deleted, IAM broken), there'd be zero invocations and
   zero errors, so no alarm. Not currently covered; would need a second
