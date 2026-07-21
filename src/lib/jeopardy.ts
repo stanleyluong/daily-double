@@ -539,6 +539,14 @@ async function generateBoard(date: string): Promise<Board> {
   return { boardId: randomUUID(), date, rounds, final };
 }
 
+// Generates a fresh board for the live-multiplayer pool. Seeded with today's
+// date so it avoids repeating the last week of daily boards' categories/
+// answers (recentHistory), giving multiplayer games new questions. Called
+// ahead of time (pool seeding / a scheduled job), never in a request path.
+export async function generateFreshBoard(): Promise<Board> {
+  return generateBoard(todayKey());
+}
+
 // Everyone worldwide plays the same board; the day rolls over on US Pacific time.
 export function todayKey(): string {
   return new Intl.DateTimeFormat("en-CA", {

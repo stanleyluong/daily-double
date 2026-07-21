@@ -7,13 +7,18 @@ import { useAuth } from "@/components/AuthProvider";
 import { useLiveGame } from "@/lib/useLiveGame";
 import {
   liveContinue,
+  liveHeartbeat,
+  liveLeave,
   livePause,
   livePick,
+  liveReportDrop,
   liveResolve,
   liveStart,
   liveSubmit,
 } from "@/lib/liveActions";
 import { formatMoney } from "@/lib/format";
+import { DISCONNECT_MS, HEARTBEAT_MS, type LiveReveal } from "@/lib/liveTypes";
+import { isMuted, playSound, setMuted, type SoundName } from "@/lib/sounds";
 
 // Derived sub-phase of an "active" clue, computed from the absolute deadlines
 // on the game doc against the local clock (good enough for a casual game; a
@@ -30,7 +35,11 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
   const [seenClueId, setSeenClueId] = useState<string | null | undefined>(undefined);
   const [toast, setToast] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [muted, setMutedState] = useState(() => (typeof window !== "undefined" ? isMuted() : false));
   const resolvedFiredFor = useRef<string | null>(null);
+  const droppedFlaggedRef = useRef<Set<string>>(new Set());
+
+  const sfx = useCallback((name: SoundName) => playSound(name), []);
 
   // Reset the answer box when a new clue opens — render-time reset rather
   // than an effect (avoids a cascading render for a render-time decision).
@@ -40,6 +49,12 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
     setSubmittedClue(null);
   }
 
+  // Keep the most recent reveal so non-pickers can keep viewing the last
+  // results after someone hits Continue (the game doc clears reveal on
+  // continue). game changes only on snapshot, so this doesn't loop.
+  const [lastReveal, setLastReveal] = useState<LiveReveal | null>(null);
+  if (game?.reveal && game.reveal !== lastReveal) setLastReveal(game.reveal);
+
   const uid = user?.uid ?? null;
 
   // Tick a local clock while a clue is live, to drive the countdown/timer.
@@ -48,11 +63,13 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
     return () => clearInterval(t);
   }, []);
 
-  // Fetch the (answer-free) public board for this game's date, once known.
+  // Fetch the (answer-free) public board for this game once it exists. Uses
+  // the game-scoped endpoint so it works for a pooled fresh board or the
+  // fallback daily board alike.
   useEffect(() => {
-    if (!game?.boardDate) return;
+    if (!game) return;
     let cancelled = false;
-    fetch(`/api/board?date=${game.boardDate}`)
+    fetch(`/api/live/board?gameId=${gameId}`)
       .then((r) => r.json())
       .then((d) => {
         if (!cancelled && d && !d.error) setBoard(d as PublicBoard);
@@ -61,7 +78,9 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [game?.boardDate]);
+    // Only refetch when the underlying board identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId, game?.boardId, game?.boardDate]);
 
   const showToast = useCallback((m: string) => {
     setToast(m);
@@ -99,6 +118,83 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
     if (game.phase !== "active") resolvedFiredFor.current = null;
   }, [game, subPhase, user, run]);
 
+  // Presence heartbeat — ping while the game is running so others can see
+  // this player is still connected. Depends only on status (not the whole
+  // game object) so heartbeat writes don't restart the interval and loop.
+  const gameStatus = game?.status;
+  useEffect(() => {
+    if (!user || gameStatus !== "in_progress") return;
+    const ping = () => liveHeartbeat(user, gameId).catch(() => {});
+    ping();
+    const t = setInterval(ping, HEARTBEAT_MS);
+    return () => clearInterval(t);
+  }, [user, gameStatus, gameId]);
+
+  // Disconnect detection: a connected client watches the others' heartbeats.
+  // On a drop it reports it (auto-pausing the game) and notifies; on a return
+  // it notifies. Edge-triggered via droppedFlaggedRef so it fires once each.
+  useEffect(() => {
+    if (!game || !user || game.status !== "in_progress") return;
+    const flagged = droppedFlaggedRef.current;
+    for (const p of game.players) {
+      if (p.uid === uid) continue;
+      const seen = game.lastSeen?.[p.uid] ?? 0;
+      const stale = now - seen > DISCONNECT_MS;
+      if (stale && !flagged.has(p.uid)) {
+        flagged.add(p.uid);
+        // Edge-triggered notification + auto-pause on a real drop.
+        showToast(`${p.name} disconnected — game paused.`);
+        if (!game.paused) run(() => liveReportDrop(user, game.id, p.uid));
+      } else if (!stale && flagged.has(p.uid)) {
+        flagged.delete(p.uid);
+        showToast(`${p.name} reconnected.`);
+      }
+    }
+  }, [game, now, uid, user, run, showToast]);
+
+  // Sound cues, edge-triggered off game transitions.
+  const soundStateRef = useRef({ countdownSec: -1, revealClue: "", finished: false, pickForMe: false });
+  useEffect(() => {
+    if (!game || muted) return;
+    const s = soundStateRef.current;
+    // Countdown 3-2-1 ticks, then "go" when the clue opens.
+    if (game.phase === "active" && !game.paused && game.countdownEndsAt) {
+      if (now < game.countdownEndsAt) {
+        const sec = Math.ceil((game.countdownEndsAt - now) / 1000);
+        if (sec !== s.countdownSec && sec > 0) {
+          s.countdownSec = sec;
+          sfx("tick");
+        }
+      } else if (s.countdownSec !== 0) {
+        s.countdownSec = 0;
+        sfx("go");
+      }
+    } else {
+      s.countdownSec = -1;
+    }
+    // Reveal — play based on my own outcome.
+    if (game.phase === "reveal" && game.reveal && s.revealClue !== game.reveal.clueId) {
+      s.revealClue = game.reveal.clueId;
+      const mine = uid ? game.reveal.results[uid]?.outcome : "none";
+      sfx(mine === "correct" ? "correct" : mine === "wrong" ? "wrong" : "timeup");
+    }
+    if (game.phase !== "reveal") s.revealClue = "";
+    // My turn to pick.
+    const myPick = game.phase === "picking" && game.pickerUid === uid;
+    if (myPick && !s.pickForMe) {
+      s.pickForMe = true;
+      sfx("pick");
+    } else if (!myPick) {
+      s.pickForMe = false;
+    }
+    // Game over.
+    if (game.phase === "finished" && !s.finished) {
+      s.finished = true;
+      const ranked = [...game.players].sort((a, b) => (game.scores[b.uid] ?? 0) - (game.scores[a.uid] ?? 0));
+      sfx(ranked[0]?.uid === uid ? "win" : "lose");
+    }
+  }, [game, now, uid, muted, sfx]);
+
   if (loading) {
     return <Centered>Loading game…</Centered>;
   }
@@ -135,9 +231,28 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
         {/* Header + scoreboard */}
         <div className="flex items-start justify-between gap-4 mb-6">
           <div>
-            <Link href="/live" className="text-xs text-blue-200/50 hover:text-gold">
-              ← Leave
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/live"
+                onClick={() => {
+                  if (user) liveLeave(user, game.id).catch(() => {});
+                }}
+                className="text-xs text-blue-200/50 hover:text-gold"
+              >
+                ← Leave
+              </Link>
+              <button
+                onClick={() => {
+                  const next = !muted;
+                  setMuted(next);
+                  setMutedState(next);
+                }}
+                className="text-xs text-blue-200/50 hover:text-gold"
+                title={muted ? "Unmute" : "Mute"}
+              >
+                {muted ? "🔇 Sound off" : "🔊 Sound on"}
+              </button>
+            </div>
             <h1 className="font-display text-2xl tracking-wider text-gold mt-1 flex items-center gap-2">
               Game <span className="tracking-[0.2em]">{game.id}</span>
               <span
@@ -203,19 +318,31 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
           </div>
         )}
 
-        {/* Picking */}
-        {game.phase === "picking" && (
-          <div>
-            <p className="text-center mb-4 text-blue-200/80">
-              {isPicker ? (
-                <span className="text-gold font-display text-xl tracking-wide">Your pick — choose a clue</span>
-              ) : (
-                <>Waiting for {nameFor(game.pickerUid ?? "")} to pick…</>
-              )}
-            </p>
-            <LiveBoard game={game} round={round} canPick={isPicker} onPick={(id) => run(() => livePick(user!, game.id, id))} />
-          </div>
-        )}
+        {/* Picking — only the picker returns to the board; everyone else keeps
+            viewing the last results until it's their turn or the clue opens. */}
+        {game.phase === "picking" &&
+          (isPicker ? (
+            <div>
+              <p className="text-center mb-4 text-gold font-display text-xl tracking-wide">
+                Your pick — choose a clue
+              </p>
+              <LiveBoard game={game} round={round} canPick onPick={(id) => run(() => livePick(user!, game.id, id))} />
+            </div>
+          ) : lastReveal ? (
+            <div>
+              <p className="text-center mb-4 text-blue-200/70">
+                Waiting for {nameFor(game.pickerUid ?? "")} to pick — here&apos;s the last one:
+              </p>
+              <Reveal reveal={lastReveal} players={game.players} uid={uid} nameFor={nameFor} />
+            </div>
+          ) : (
+            <div>
+              <p className="text-center mb-4 text-blue-200/80">
+                Waiting for {nameFor(game.pickerUid ?? "")} to pick…
+              </p>
+              <LiveBoard game={game} round={round} canPick={false} onPick={() => {}} />
+            </div>
+          ))}
 
         {/* Active clue */}
         {game.phase === "active" && (
@@ -253,13 +380,17 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
         {game.phase === "finished" && <Finished game={game} uid={uid} nameFor={nameFor} />}
       </main>
 
-      {/* Pause overlay — any player can resume (normal mode) */}
+      {/* Pause overlay — any player can resume */}
       {game.paused && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="text-center">
+          <div className="text-center max-w-sm">
             <p className="font-display text-6xl tracking-widest text-gold mb-3">PAUSED</p>
             <p className="text-blue-200/70 mb-6">
-              {game.pausedBy ? `Paused by ${nameFor(game.pausedBy)}` : "Game paused"}
+              {game.pausedReason === "disconnect"
+                ? `${game.pausedBy ? nameFor(game.pausedBy) : "A player"} disconnected. Waiting for them to reconnect — or resume without them.`
+                : game.pausedBy
+                  ? `Paused by ${nameFor(game.pausedBy)}`
+                  : "Game paused"}
             </p>
             <button
               onClick={() => run(() => livePause(user!, game.id, false))}
@@ -517,7 +648,7 @@ function Reveal({
   players: { uid: string; name: string }[];
   uid: string | null;
   nameFor: (id: string) => string;
-  onContinue: () => void;
+  onContinue?: () => void;
 }) {
   return (
     <div className="max-w-2xl mx-auto bg-board rounded-lg shadow-2xl p-6 md:p-8 text-center">
@@ -556,12 +687,14 @@ function Reveal({
         })}
       </div>
 
-      <button
-        onClick={onContinue}
-        className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-8 py-2 rounded"
-      >
-        Continue →
-      </button>
+      {onContinue && (
+        <button
+          onClick={onContinue}
+          className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-8 py-2 rounded"
+        >
+          Continue →
+        </button>
+      )}
     </div>
   );
 }

@@ -10,6 +10,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "2026-07-21",
+    title: "Multiplayer, leveled up",
+    tag: "improved",
+    items: [
+      "Every multiplayer game now uses a fresh board of brand-new questions — no more replaying ones you've seen.",
+      "Whoever answers correctly first controls the next pick, just like the real show. Miss it and the board stays with whoever picked.",
+      "Sound effects! A ticking countdown, a chime when you're right, a buzzer when you're not — toggle them with the 🔊 button.",
+      "If someone drops out, the game auto-pauses and everyone's told — then picks right back up when they reconnect.",
+      "When it's someone else's pick, you stay on the last question's results instead of being yanked back to the board.",
+    ],
+  },
+  {
     date: "2026-07-20",
     title: "Ranked mode, ratings & pause",
     tag: "new",

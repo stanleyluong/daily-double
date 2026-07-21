@@ -5,8 +5,10 @@ import {
   getBoardForDate,
   judgeAnswer,
   listBoards,
+  toPublicBoard,
   todayKey,
   type Board,
+  type PublicBoard,
 } from "@/lib/jeopardy";
 import {
   ANSWER_MS,
@@ -83,12 +85,14 @@ function toGame(id: string, data: FirebaseFirestore.DocumentData): LiveGame {
     mode: data.mode ?? "normal",
     hostUid: data.hostUid,
     boardDate: data.boardDate,
+    boardId: data.boardId ?? null,
     players: data.players ?? [],
     playerUids: data.playerUids ?? [],
     scores: data.scores ?? {},
     phase: data.phase,
     roundIndex: data.roundIndex ?? 0,
     pickerUid: data.pickerUid ?? null,
+    nextPickerUid: data.nextPickerUid ?? null,
     currentClueId: data.currentClueId ?? null,
     currentSubmittedUids: data.currentSubmittedUids ?? [],
     answeredClueIds: data.answeredClueIds ?? [],
@@ -99,15 +103,65 @@ function toGame(id: string, data: FirebaseFirestore.DocumentData): LiveGame {
     reveal: data.reveal ?? null,
     paused: data.paused ?? false,
     pausedBy: data.pausedBy ?? null,
+    pausedReason: data.pausedReason ?? null,
     pausedCountdownRemaining: data.pausedCountdownRemaining ?? null,
     pausedAnswerRemaining: data.pausedAnswerRemaining ?? null,
+    lastSeen: data.lastSeen ?? {},
     rated: data.rated ?? false,
   };
+}
+
+const LIVE_BOARDS = "liveBoards";
+
+// Claim an unused pre-generated board from the pool so a live game gets fresh,
+// non-repeating questions. Returns its id, or null if the pool is empty (the
+// caller then falls back to a past daily board). Generation happens ahead of
+// time — never in the request path, which can't fit board generation inside
+// Amplify's SSR timeout (see the pregenerate Lambda).
+async function claimLiveBoard(gameId: string): Promise<string | null> {
+  const snap = await db().collection(LIVE_BOARDS).where("usedBy", "==", null).limit(5).get();
+  for (const doc of snap.docs) {
+    const ok = await db().runTransaction(async (tx) => {
+      const d = await tx.get(doc.ref);
+      if (!d.exists || d.get("usedBy") != null) return false;
+      tx.update(doc.ref, { usedBy: gameId, usedAt: FieldValue.serverTimestamp() });
+      return true;
+    });
+    if (ok) return doc.id;
+  }
+  return null;
+}
+
+// The board a game is played on: a pooled fresh board if it has one, else a
+// stored daily board by date (fallback when the pool was empty at creation).
+async function getGameBoard(game: LiveGame): Promise<Board | null> {
+  if (game.boardId) {
+    const d = await db().collection(LIVE_BOARDS).doc(game.boardId).get();
+    if (d.exists) {
+      const data = d.data()!;
+      return {
+        boardId: game.boardId,
+        date: data.date ?? game.boardDate ?? "",
+        rounds: data.rounds,
+        final: data.final,
+      };
+    }
+  }
+  return getBoardForDate(game.boardDate);
 }
 
 export async function getGame(id: string): Promise<LiveGame | null> {
   const snap = await gameRef(id).get();
   return snap.exists ? toGame(id, snap.data()!) : null;
+}
+
+// The answer-free public board for a game, for the client to render. Answers
+// are stripped by toPublicBoard, so this is safe to serve to any player.
+export async function getPublicGameBoard(gameId: string): Promise<PublicBoard | null> {
+  const game = await getGame(gameId);
+  if (!game) return null;
+  const board = await getGameBoard(game);
+  return board ? toPublicBoard(board) : null;
 }
 
 export async function createGame(uid: string, name: string, mode: LiveMode = "normal"): Promise<string> {
@@ -123,12 +177,14 @@ export async function createGame(uid: string, name: string, mode: LiveMode = "no
         mode: mode === "ranked" ? "ranked" : "normal",
         hostUid: uid,
         boardDate,
+        boardId: null,
         players: [player],
         playerUids: [uid],
         scores: { [uid]: 0 },
         phase: "lobby",
         roundIndex: 0,
         pickerUid: null,
+        nextPickerUid: null,
         currentClueId: null,
         currentSubmittedUids: [],
         answeredClueIds: [],
@@ -139,12 +195,18 @@ export async function createGame(uid: string, name: string, mode: LiveMode = "no
         reveal: null,
         paused: false,
         pausedBy: null,
+        pausedReason: null,
         pausedCountdownRemaining: null,
         pausedAnswerRemaining: null,
+        lastSeen: { [uid]: Date.now() },
         rated: false,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
+      // Assign a fresh pooled board if one's available (fresh, non-repeating
+      // questions); otherwise the game falls back to its boardDate.
+      const boardId = await claimLiveBoard(code);
+      if (boardId) await gameRef(code).update({ boardId });
       return code;
     } catch {
       // code taken — try another
@@ -208,7 +270,7 @@ export async function pickClue(gameId: string, uid: string, clueId: string): Pro
   if (game.status !== "in_progress" || game.phase !== "picking") throw new Error("bad-phase");
   if (game.pickerUid !== uid) throw new Error("not-your-pick");
 
-  const board = await getBoardForDate(game.boardDate);
+  const board = await getGameBoard(game);
   if (!board) throw new Error("no-board");
   const roundIds = currentRoundClueIds(board, game.roundIndex);
   if (!roundIds.includes(clueId)) throw new Error("bad-clue");
@@ -228,8 +290,10 @@ export async function pickClue(gameId: string, uid: string, clueId: string): Pro
       resolving: false,
       resolveClaimedAt: null,
       reveal: null,
+      nextPickerUid: null,
       paused: false,
       pausedBy: null,
+      pausedReason: null,
       pausedCountdownRemaining: null,
       pausedAnswerRemaining: null,
       updatedAt: FieldValue.serverTimestamp(),
@@ -290,24 +354,27 @@ export async function resolveClue(gameId: string): Promise<void> {
 
   const clueId = claim.currentClueId!;
   try {
-    const board = await getBoardForDate(claim.boardDate);
+    const board = await getGameBoard(claim);
     if (!board) throw new Error("no-board");
     const found = findClue(board, clueId);
     if (!found) throw new Error("no-clue");
 
     const subsSnap = await ref.collection("submissions").where("clueId", "==", clueId).get();
-    const submissions = subsSnap.docs.map((d) => d.data() as { uid: string; answer: string });
+    const submissions = subsSnap.docs.map((d) => {
+      const data = d.data() as { uid: string; answer: string; submittedAt?: FirebaseFirestore.Timestamp };
+      return { uid: data.uid, answer: data.answer, at: data.submittedAt ? data.submittedAt.toMillis() : Infinity };
+    });
 
     // Judge every submission (parallel). Non-submitters score nothing.
     const judged = await Promise.all(
       submissions.map(async (s) => {
-        if (!s.answer) return { uid: s.uid, answer: s.answer, correct: false, comment: "" };
+        if (!s.answer) return { uid: s.uid, answer: s.answer, at: s.at, correct: false, comment: "" };
         const verdict = await judgeAnswer(
           { title: found.category.title },
           { clue: found.clue.clue, answer: found.clue.answer, acceptable: found.clue.acceptable },
           s.answer
         );
-        return { uid: s.uid, answer: s.answer, correct: verdict.correct, comment: verdict.comment };
+        return { uid: s.uid, answer: s.answer, at: s.at, correct: verdict.correct, comment: verdict.comment };
       })
     );
 
@@ -317,6 +384,12 @@ export async function resolveClue(gameId: string): Promise<void> {
       results[j.uid] = { answer: j.answer, outcome: j.correct ? "correct" : "wrong" };
     }
     const firstComment = judged.find((j) => j.comment)?.comment ?? "";
+
+    // Fastest correct answerer controls the next pick (Jeopardy-style). If
+    // nobody was right, nextPickerUid stays null and the current picker keeps
+    // control (decided in continueGame).
+    const correct = judged.filter((j) => j.correct).sort((a, b) => a.at - b.at);
+    const nextPickerUid = correct.length > 0 ? correct[0].uid : null;
 
     // 2. Commit the ruling: bump scores, write reveal, advance phase — all in
     //    a transaction, guarded by `resolved` so this can't double-apply.
@@ -339,6 +412,7 @@ export async function resolveClue(gameId: string): Promise<void> {
       tx.update(ref, {
         scores,
         reveal,
+        nextPickerUid,
         phase: "reveal",
         answeredClueIds: FieldValue.arrayUnion(clueId),
         resolving: false,
@@ -373,6 +447,7 @@ export async function pauseGame(gameId: string, uid: string): Promise<void> {
     const patch: Record<string, unknown> = {
       paused: true,
       pausedBy: uid,
+      pausedReason: "manual",
       updatedAt: FieldValue.serverTimestamp(),
     };
     if (g.phase === "active") {
@@ -381,6 +456,47 @@ export async function pauseGame(gameId: string, uid: string): Promise<void> {
     }
     tx.update(ref, patch);
   });
+}
+
+// Auto-pause triggered by a connected client when it detects a player has
+// dropped (stale heartbeat). Applies in ANY mode — an involuntary disconnect
+// isn't a strategic pause, so it bypasses the ranked no-pause rule. Idempotent
+// while already paused.
+export async function pauseForDisconnect(gameId: string, byUid: string, droppedUid: string): Promise<void> {
+  const ref = gameRef(gameId);
+  const now = Date.now();
+  await db().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error("no-game");
+    const g = toGame(gameId, snap.data()!);
+    if (!g.playerUids.includes(byUid)) throw new Error("not-a-player");
+    if (g.status !== "in_progress" || g.paused) return;
+
+    const patch: Record<string, unknown> = {
+      paused: true,
+      pausedBy: droppedUid,
+      pausedReason: "disconnect",
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (g.phase === "active") {
+      patch.pausedCountdownRemaining = g.countdownEndsAt !== null ? Math.max(0, g.countdownEndsAt - now) : 0;
+      patch.pausedAnswerRemaining = g.answerEndsAt !== null ? Math.max(0, g.answerEndsAt - now) : 0;
+    }
+    tx.update(ref, patch);
+  });
+}
+
+// Presence heartbeat — a player pings while they're in a running game so the
+// others can tell they're still connected. Written server-side (Admin SDK)
+// because clients can't write the game doc.
+export async function heartbeat(gameId: string, uid: string): Promise<void> {
+  await gameRef(gameId).update({ [`lastSeen.${uid}`]: Date.now() });
+}
+
+// Explicit leave: mark this player's heartbeat as stale immediately so the
+// others detect the drop right away (rather than waiting out the timeout).
+export async function leaveGame(gameId: string, uid: string): Promise<void> {
+  await gameRef(gameId).update({ [`lastSeen.${uid}`]: 0 });
 }
 
 export async function resumeGame(gameId: string, uid: string): Promise<void> {
@@ -396,6 +512,7 @@ export async function resumeGame(gameId: string, uid: string): Promise<void> {
     const patch: Record<string, unknown> = {
       paused: false,
       pausedBy: null,
+      pausedReason: null,
       pausedCountdownRemaining: null,
       pausedAnswerRemaining: null,
       updatedAt: FieldValue.serverTimestamp(),
@@ -420,7 +537,7 @@ export async function continueGame(gameId: string, uid: string): Promise<void> {
   if (!game.playerUids.includes(uid)) throw new Error("not-a-player");
   if (game.phase !== "reveal") throw new Error("bad-phase");
 
-  const board = await getBoardForDate(game.boardDate);
+  const board = await getGameBoard(game);
   if (!board) throw new Error("no-board");
 
   let roundIndex = game.roundIndex;
@@ -437,10 +554,9 @@ export async function continueGame(gameId: string, uid: string): Promise<void> {
     }
   }
 
-  // Rotate the pick to the next player in join order.
-  const order = game.playerUids;
-  const curIdx = game.pickerUid ? order.indexOf(game.pickerUid) : -1;
-  const nextPicker = order[(curIdx + 1) % order.length];
+  // The fastest correct answerer picks next; if nobody was right, the current
+  // picker keeps control (both fall back safely to the first player).
+  const nextPicker = game.nextPickerUid ?? game.pickerUid ?? game.playerUids[0];
 
   await db().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -451,6 +567,7 @@ export async function continueGame(gameId: string, uid: string): Promise<void> {
       status: phase === "finished" ? "finished" : "in_progress",
       roundIndex,
       pickerUid: phase === "finished" ? null : nextPicker,
+      nextPickerUid: null,
       currentClueId: null,
       currentSubmittedUids: [],
       countdownEndsAt: null,

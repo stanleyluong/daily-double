@@ -8,6 +8,12 @@ export const MAX_PLAYERS = 3;
 
 export type LiveMode = "normal" | "ranked";
 export type LivePhase = "lobby" | "picking" | "active" | "reveal" | "finished";
+export type PauseReason = "manual" | "disconnect";
+
+// A player is considered disconnected if their last heartbeat is older than
+// this. Clients heartbeat every HEARTBEAT_MS while in a running game.
+export const HEARTBEAT_MS = 4000;
+export const DISCONNECT_MS = 12000;
 
 export interface LivePlayer {
   uid: string;
@@ -34,12 +40,18 @@ export interface LiveGame {
   mode: LiveMode;
   hostUid: string;
   boardDate: string;
+  // A pre-generated fresh board from the pool (liveBoards/{boardId}). Older
+  // games (and the fallback) instead use boardDate against jeopardyBoards.
+  boardId: string | null;
   players: LivePlayer[];
   playerUids: string[];
   scores: Record<string, number>;
   phase: LivePhase;
   roundIndex: number;
   pickerUid: string | null;
+  // Who picks next, decided at reveal time: the fastest correct answerer.
+  // Null → nobody was right, so the current picker keeps control.
+  nextPickerUid: string | null;
   currentClueId: string | null;
   currentSubmittedUids: string[];
   answeredClueIds: string[];
@@ -48,13 +60,16 @@ export interface LiveGame {
   resolving: boolean;
   resolveClaimedAt: number | null;
   reveal: LiveReveal | null;
-  // Pause (normal mode only; ranked games can't be paused). While paused, a
-  // mid-clue timer is frozen by storing the remaining ms and recomputing the
-  // absolute deadlines on resume.
+  // Pause. Manual pause is normal-mode-only; a "disconnect" pause is
+  // triggered automatically when a player drops and applies in any mode.
+  // While paused, a mid-clue timer is frozen by storing the remaining ms.
   paused: boolean;
   pausedBy: string | null;
+  pausedReason: PauseReason | null;
   pausedCountdownRemaining: number | null;
   pausedAnswerRemaining: number | null;
+  // Presence: uid -> last heartbeat (server epoch ms). 0 means "left".
+  lastSeen: Record<string, number>;
   // Ranked: set once when a ranked game finishes and ratings are applied, so
   // the rating update can't double-apply.
   rated: boolean;
