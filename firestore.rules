@@ -1,0 +1,49 @@
+rules_version = '2';
+
+// SHARED Firestore rules for the `stanleyluong-1377a` project.
+//
+// ⚠️  This project is shared between stanleyluong.com (the portfolio) and
+//     Daily Double. These rules are a MERGE — deploying a file that only
+//     covers Daily Double would break the portfolio, which reads its content
+//     collections publicly via the client SDK. Preserve every block below.
+//
+// What's Daily-Double-specific: the `liveGames` block. Everything else is the
+// portfolio's pre-existing rules, unchanged except that the generic
+// authed-write rule now explicitly excludes `liveGames` so clients cannot
+// write game docs directly — every live-game mutation must go through the
+// Admin-SDK API routes (server-authoritative). Firestore rules are a
+// permissive union, so denial requires that NO matching rule grants the
+// write; hence the `collection != 'liveGames'` guard rather than an
+// `allow write: if false` (which the generic rule would otherwise override).
+//
+// Deploy:  firebase deploy --only firestore:rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Portfolio public content: anyone reads, only the owner writes.
+    match /{collection}/{doc} {
+      allow read: if collection in ['main', 'profile', 'projects', 'experience', 'skills', 'certificates', 'education'];
+      allow write: if request.auth != null && collection != 'liveGames';
+    }
+
+    // Portfolio visitor tracking: public pages write anonymously, owner reads.
+    match /visitors/{visitorId} {
+      allow create, update: if true;
+      allow read, delete: if request.auth != null;
+    }
+
+    // Daily Double live multiplayer. Members (players in the game) read the
+    // game doc in realtime over onSnapshot; NO client writes (Admin SDK only).
+    // The doc never holds answers except `reveal`, which is post-answer.
+    match /liveGames/{gameId} {
+      allow read: if request.auth != null
+                  && request.auth.uid in resource.data.playerUids;
+      allow write: if false;
+
+      // Pre-reveal answers; only the resolver (Admin SDK) ever reads these.
+      match /submissions/{subId} {
+        allow read, write: if false;
+      }
+    }
+  }
+}

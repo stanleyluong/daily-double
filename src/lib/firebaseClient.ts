@@ -4,6 +4,7 @@
 // public: they identify the project, not authenticate as it.
 import { getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -17,3 +18,7 @@ const firebaseConfig = {
 const app = getApps()[0] ?? initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
+// Firestore is used client-side only for realtime reads of live-game docs
+// (onSnapshot). All writes still go through Admin-SDK API routes — security
+// rules deny client writes entirely (see firestore.rules).
+export const firestore = getFirestore(app);
