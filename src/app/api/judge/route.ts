@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import {
   findClue,
   getBoardForDate,
-  isValidDateKey,
+  isValidBoardKey,
   judgeAnswer,
   roundTopValue,
   todayKey,
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
 
   const { boardId, clueId, answer, reveal, wager } = body;
   const date = body.date ?? todayKey();
-  if (!isValidDateKey(date) || !boardId || !clueId || (!reveal && typeof answer !== "string")) {
+  if (!isValidBoardKey(date) || !boardId || !clueId || (!reveal && typeof answer !== "string")) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
   if (typeof answer === "string" && answer.length > 200) {

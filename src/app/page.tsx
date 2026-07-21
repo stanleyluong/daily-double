@@ -14,14 +14,17 @@ export default function Home() {
             written and judged by Claude. Type your answer; a lenient AI host rules on it.
           </p>
           <div className="mt-3 flex items-center justify-center gap-x-4 gap-y-1 text-sm flex-wrap">
+            <Link href="/play" className="text-gold hover:text-gold-soft underline font-semibold">
+              Choose a board →
+            </Link>
             <Link href="/live" className="text-gold/80 hover:text-gold underline">
               Play with friends →
             </Link>
             <Link href="/history" className="text-gold/80 hover:text-gold underline">
-              Jeopardy! archive →
+              Real Jeopardy! archive →
             </Link>
             <Link href="/boards" className="text-gold/80 hover:text-gold underline">
-              Past boards →
+              Past AI boards →
             </Link>
           </div>
         </header>

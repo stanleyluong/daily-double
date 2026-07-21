@@ -547,6 +547,57 @@ export async function generateFreshBoard(): Promise<Board> {
   return generateBoard(todayKey());
 }
 
+// A user-defined board: the player supplies up to 6 category titles and we
+// write the clues. Deliberately a SINGLE round + Final Jeopardy (not two
+// rounds) so generation is one parallel wave of clue calls plus one final —
+// fast enough to run inside a request without hitting Amplify's SSR timeout
+// (unlike the full daily board, which is pre-generated off the request path).
+export async function generateCustomBoard(titles: string[]): Promise<Board> {
+  const clean = titles.map((t) => (t ?? "").replace(/\s+/g, " ").trim().slice(0, 60)).filter(Boolean).slice(0, 6);
+  if (clean.length === 0) throw new Error("Enter at least one category.");
+
+  const briefs: CategoryBrief[] = clean.map((t) => ({ title: t, theme: t }));
+  const clueSets = await Promise.all(briefs.map((b) => generateClues(b, false, [])));
+
+  const categories: Category[] = briefs.map((brief, c) => ({
+    title: brief.title,
+    clues: clueSets[c].map((raw, r) => ({
+      id: `0-${c}-${r}`,
+      value: (r + 1) * 200,
+      clue: raw.clue,
+      answer: raw.answer,
+      acceptable: raw.acceptable ?? [],
+      dailyDouble: false,
+    })),
+  }));
+  placeDailyDoubles(categories, 1);
+
+  const rounds: Round[] = [{ name: "Jeopardy!", categories }];
+  const briefMap = new Map<string, CategoryBrief>();
+  briefs.forEach((b, c) => briefMap.set(`0-${c}`, b));
+  await dedupeBoardAnswers(rounds, briefMap, [false]);
+
+  const allAnswers = rounds.flatMap((r) => r.categories.flatMap((c) => c.clues.map((cl) => cl.answer)));
+  const final = await generateFinalJeopardy(todayKey(), briefs, allAnswers);
+
+  return { boardId: randomUUID(), date: todayKey(), rounds, final };
+}
+
+// Generates + persists a custom board, returning its play key (`custom-{id}`)
+// which the whole play/judge flow already understands via getBoardForDate.
+export async function createCustomBoard(uid: string, titles: string[]): Promise<string> {
+  const board = await generateCustomBoard(titles);
+  const id = randomUUID().replace(/-/g, "").slice(0, 12);
+  await db().collection(CUSTOM_BOARDS).doc(id).set({
+    ownerUid: uid,
+    rounds: board.rounds,
+    final: board.final ?? null,
+    categoryTitles: board.rounds[0].categories.map((c) => c.title),
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return `custom-${id}`;
+}
+
 // Everyone worldwide plays the same board; the day rolls over on US Pacific time.
 export function todayKey(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -558,8 +609,16 @@ export function isValidDateKey(date: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(date);
 }
 
+// A playable board key is a date (daily/historical board) or a custom-board
+// key. Used by the play/judge/scores routes so custom boards flow through the
+// same endpoints.
+export function isValidBoardKey(key: string): boolean {
+  return isValidDateKey(key) || /^custom-[A-Za-z0-9]{6,}$/.test(key);
+}
+
 const BOARDS = "jeopardyBoards";
 const HISTORICAL_BOARDS = "historicalBoards";
+const CUSTOM_BOARDS = "customBoards";
 
 // Boards are immutable once written, so a per-instance memo is safe and keeps
 // judge calls from re-reading Firestore on every answer.
@@ -576,6 +635,17 @@ function boardFromDoc(data: FirebaseFirestore.DocumentData): Board {
 export async function getBoardForDate(date: string): Promise<Board | null> {
   const cached = memo.get(date);
   if (cached) return cached;
+
+  // Custom user-generated boards are keyed `custom-{id}` so they flow through
+  // the same play/judge path (the id is the answeredClues namespace too).
+  if (date.startsWith("custom-")) {
+    const snap = await db().collection(CUSTOM_BOARDS).doc(date.slice(7)).get();
+    if (!snap.exists) return null;
+    const d = snap.data()!;
+    const board: Board = { boardId: date, date, rounds: d.rounds, final: d.final ?? undefined };
+    memo.set(date, board);
+    return board;
+  }
 
   const ref = db().collection(BOARDS).doc(date);
   const snap = await ref.get();

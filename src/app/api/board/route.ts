@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getBoardForDate, isValidDateKey, todayKey, toPublicBoard } from "@/lib/jeopardy";
+import { getBoardForDate, isValidBoardKey, todayKey, toPublicBoard } from "@/lib/jeopardy";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,8 @@ export async function GET(request: Request) {
 
   const today = todayKey();
   const date = new URL(request.url).searchParams.get("date") ?? today;
-  if (!isValidDateKey(date) || date > today) {
+  // Custom boards have no "future date" notion; only real dates are capped at today.
+  if (!isValidBoardKey(date) || (!date.startsWith("custom-") && date > today)) {
     return NextResponse.json({ error: "Invalid date." }, { status: 400 });
   }
 

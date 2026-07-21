@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getBoardForDate, isValidDateKey, todayKey, totalClueCount } from "@/lib/jeopardy";
+import { getBoardForDate, isValidBoardKey, todayKey, totalClueCount } from "@/lib/jeopardy";
 import { percentileFor, submitScore, topScores } from "@/lib/scores";
 import { answeredCluesForDate, summarize } from "@/lib/answers";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Slow down a little." }, { status: 429 });
   }
   const date = new URL(request.url).searchParams.get("date") ?? todayKey();
-  if (!isValidDateKey(date)) {
+  if (!isValidBoardKey(date)) {
     return NextResponse.json({ error: "Invalid date." }, { status: 400 });
   }
   try {
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
 
   if (
     !date ||
-    !isValidDateKey(date) ||
+    !isValidBoardKey(date) ||
     !boardId ||
     name.length === 0 ||
     typeof durationMs !== "number" ||
