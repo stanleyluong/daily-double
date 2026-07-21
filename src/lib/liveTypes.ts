@@ -3,7 +3,8 @@
 // here, so it's safe to pull into client components.
 
 export const COUNTDOWN_MS = 3000;
-export const ANSWER_MS = 10000;
+export const ANSWER_MS = 10000; // default answer window
+export const ANSWER_MS_OPTIONS = [5000, 10000, 15000, 20000, 30000] as const;
 export const MAX_PLAYERS = 3;
 
 export type LiveMode = "normal" | "ranked";
@@ -43,6 +44,8 @@ export interface LiveGame {
   // A pre-generated fresh board from the pool (liveBoards/{boardId}). Older
   // games (and the fallback) instead use boardDate against jeopardyBoards.
   boardId: string | null;
+  // Game setting: length of each answer window in ms (default ANSWER_MS).
+  answerMs: number;
   players: LivePlayer[];
   playerUids: string[];
   scores: Record<string, number>;

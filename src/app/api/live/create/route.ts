@@ -16,20 +16,29 @@ export async function POST(request: Request) {
   let name = "";
   let mode: "normal" | "ranked" = "normal";
   let boardKey: string | undefined;
+  let answerMs: number | undefined;
   try {
-    const body = (await request.json()) as { name?: string; mode?: string; boardKey?: string };
+    const body = (await request.json()) as {
+      name?: string;
+      mode?: string;
+      boardKey?: string;
+      answerMs?: number;
+    };
     name = body.name ?? "";
     if (body.mode === "ranked") mode = "ranked";
     if (typeof body.boardKey === "string" && body.boardKey) {
-      // Accept "pool", a date, or a custom key; ignore anything else.
-      if (body.boardKey === "pool" || isValidBoardKey(body.boardKey)) boardKey = body.boardKey;
+      // Accept "pool", "unplayed", a date, or a custom key; ignore anything else.
+      if (body.boardKey === "pool" || body.boardKey === "unplayed" || isValidBoardKey(body.boardKey)) {
+        boardKey = body.boardKey;
+      }
     }
+    if (typeof body.answerMs === "number") answerMs = body.answerMs;
   } catch {
     /* all optional */
   }
 
   try {
-    const code = await createGame(uid, name, mode, boardKey);
+    const code = await createGame(uid, name, mode, boardKey, answerMs);
     return NextResponse.json({ code });
   } catch (error) {
     return NextResponse.json(

@@ -12,6 +12,7 @@ import {
 } from "@/lib/jeopardy";
 import {
   ANSWER_MS,
+  ANSWER_MS_OPTIONS,
   COUNTDOWN_MS,
   MAX_PLAYERS,
   type LiveGame,
@@ -22,6 +23,7 @@ import {
   type RevealResult,
 } from "@/lib/liveTypes";
 import { applyRankedResults } from "@/lib/ranking";
+import { markPlayed, pickUnplayedHistorical } from "@/lib/played";
 
 export { ANSWER_MS, COUNTDOWN_MS } from "@/lib/liveTypes";
 export type { LiveGame, LiveMode, LivePhase, LivePlayer, LiveReveal, RevealResult } from "@/lib/liveTypes";
@@ -86,6 +88,7 @@ function toGame(id: string, data: FirebaseFirestore.DocumentData): LiveGame {
     hostUid: data.hostUid,
     boardDate: data.boardDate,
     boardId: data.boardId ?? null,
+    answerMs: data.answerMs ?? ANSWER_MS,
     players: data.players ?? [],
     playerUids: data.playerUids ?? [],
     scores: data.scores ?? {},
@@ -174,10 +177,15 @@ export async function createGame(
   uid: string,
   name: string,
   mode: LiveMode = "normal",
-  boardKey?: string
+  boardKey?: string,
+  answerMs?: number
 ): Promise<string> {
-  const useSpecific = !!boardKey && boardKey !== "pool";
-  const boardDate = useSpecific ? boardKey! : await pickBoardDate();
+  // "unplayed" → a real historical episode the host hasn't played yet.
+  let resolvedKey = boardKey;
+  if (boardKey === "unplayed") resolvedKey = (await pickUnplayedHistorical(uid)) ?? "pool";
+  const useSpecific = !!resolvedKey && resolvedKey !== "pool";
+  const boardDate = useSpecific ? resolvedKey! : await pickBoardDate();
+  const window = ANSWER_MS_OPTIONS.includes(answerMs as (typeof ANSWER_MS_OPTIONS)[number]) ? answerMs! : ANSWER_MS;
   const player: LivePlayer = { uid, name: cleanName(name, "Player 1") };
 
   // Retry on the astronomically-unlikely code collision.
@@ -190,6 +198,7 @@ export async function createGame(
         hostUid: uid,
         boardDate,
         boardId: null,
+        answerMs: window,
         players: [player],
         playerUids: [uid],
         scores: { [uid]: 0 },
@@ -269,6 +278,15 @@ export async function startGame(gameId: string, uid: string): Promise<void> {
       updatedAt: FieldValue.serverTimestamp(),
     });
   });
+
+  // Mark this board as played for everyone in the game (best-effort) so
+  // "unplayed episode" picks skip it next time. Uses the real board identity
+  // (a pool board's id, or the date/custom key otherwise).
+  const g = await getGame(gameId);
+  if (g) {
+    const key = g.boardId ?? g.boardDate;
+    await Promise.all(g.playerUids.map((u) => markPlayed(u, key).catch(() => {})));
+  }
 }
 
 function currentRoundClueIds(board: Board, roundIndex: number): string[] {
@@ -300,7 +318,7 @@ export async function pickClue(gameId: string, uid: string, clueId: string): Pro
       currentClueId: clueId,
       currentSubmittedUids: [],
       countdownEndsAt: now + COUNTDOWN_MS,
-      answerEndsAt: now + COUNTDOWN_MS + ANSWER_MS,
+      answerEndsAt: now + COUNTDOWN_MS + (game.answerMs ?? ANSWER_MS),
       resolving: false,
       resolveClaimedAt: null,
       reveal: null,

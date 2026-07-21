@@ -8,6 +8,7 @@ import {
   todayKey,
 } from "@/lib/jeopardy";
 import { getAnsweredClue, recordAnsweredClue, scoreSoFar } from "@/lib/answers";
+import { markPlayed } from "@/lib/played";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { authAdmin } from "@/lib/firebaseAdmin";
 
@@ -72,6 +73,10 @@ export async function POST(request: Request) {
       // The client is holding a board the server no longer recognizes.
       return NextResponse.json({ error: "board-changed" }, { status: 409 });
     }
+
+    // Record that this account has played this board (best-effort) for the
+    // played-history view and multiplayer's "unplayed episode" picker.
+    markPlayed(uid, date).catch(() => {});
 
     // Resolve the clue + category + this clue's point value, branching on
     // Final Jeopardy vs a grid clue. Both converge on the same shape

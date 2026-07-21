@@ -4,26 +4,40 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import type { MyScoreRow } from "@/lib/scores";
+import type { PlayedRow } from "@/lib/played";
 import { formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
+
+const KIND_LABEL: Record<PlayedRow["kind"], string> = {
+  daily: "AI daily",
+  historical: "Real episode",
+  custom: "Custom",
+};
 
 export default function MyScoresPage() {
   const { user, loading } = useAuth();
   const [scores, setScores] = useState<MyScoreRow[] | null>(null);
+  const [played, setPlayed] = useState<PlayedRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     setScores(null);
+    setPlayed(null);
     setError(null);
-    user
-      .getIdToken()
-      .then((token) => fetch("/api/my-scores", { headers: { Authorization: `Bearer ${token}` } }))
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.error) throw new Error(data.error);
-        setScores(data.scores as MyScoreRow[]);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load your scores."));
+    user.getIdToken().then((token) => {
+      const auth = { Authorization: `Bearer ${token}` };
+      fetch("/api/my-scores", { headers: auth })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.error) throw new Error(data.error);
+          setScores(data.scores as MyScoreRow[]);
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load your scores."));
+      fetch("/api/my-played", { headers: auth })
+        .then((res) => res.json())
+        .then((data) => setPlayed((data.played as PlayedRow[]) ?? []))
+        .catch(() => setPlayed([]));
+    });
   }, [user]);
 
   return (
@@ -77,6 +91,31 @@ export default function MyScoresPage() {
               </li>
             ))}
           </ol>
+        )}
+
+        {/* Played history */}
+        {user && played && played.length > 0 && (
+          <section className="mt-10">
+            <h2 className="font-display text-2xl tracking-wide text-gold mb-3">Boards you&apos;ve played</h2>
+            <ul className="divide-y divide-board bg-board-deep/40 border border-board rounded-lg overflow-hidden">
+              {played.slice(0, 40).map((row) => {
+                const label = row.boardKey.startsWith("custom-") ? "Custom board" : formatBoardDate(row.boardKey);
+                const href = row.boardKey.startsWith("custom-")
+                  ? `/custom/${row.boardKey.slice(7)}`
+                  : `/boards/${row.boardKey}`;
+                return (
+                  <li key={row.boardKey} className="flex items-center gap-3 px-4 py-2.5">
+                    <Link href={href} className="flex-1 min-w-0 text-blue-100 hover:text-gold hover:underline truncate">
+                      {label}
+                    </Link>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-blue-200/40">
+                      {KIND_LABEL[row.kind]}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         )}
       </main>
       <footer className="text-center text-xs text-blue-200/40 py-6">

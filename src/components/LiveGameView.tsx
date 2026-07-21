@@ -533,6 +533,7 @@ function ActiveClue({
     currentClueId: string | null;
     countdownEndsAt: number | null;
     answerEndsAt: number | null;
+    answerMs: number;
     currentSubmittedUids: string[];
     players: { uid: string; name: string }[];
   };
@@ -560,10 +561,11 @@ function ActiveClue({
     );
   }
 
+  const windowSecs = (game.answerMs ?? 10000) / 1000;
   const remaining =
     game.answerEndsAt !== null ? Math.max(0, (game.answerEndsAt - now) / 1000) : 0;
   const pct =
-    game.answerEndsAt !== null ? Math.max(0, Math.min(100, (remaining / 10) * 100)) : 0;
+    game.answerEndsAt !== null ? Math.max(0, Math.min(100, (remaining / windowSecs) * 100)) : 0;
 
   return (
     <div className="max-w-2xl mx-auto bg-board rounded-lg shadow-2xl p-6 md:p-8">

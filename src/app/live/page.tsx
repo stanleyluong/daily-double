@@ -13,7 +13,8 @@ export default function LiveEntryPage() {
   const [showAuth, setShowAuth] = useState(false);
   const [code, setCode] = useState("");
   const [mode, setMode] = useState<"normal" | "ranked">("normal");
-  const [source, setSource] = useState<"pool" | "custom">("pool");
+  const [source, setSource] = useState<"pool" | "unplayed" | "custom">("pool");
+  const [answerMs, setAnswerMs] = useState(10000);
   const [cats, setCats] = useState<string[]>(["", "", "", "", "", ""]);
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +26,7 @@ export default function LiveEntryPage() {
     setBusy("create");
     setError(null);
     try {
-      let boardKey = "pool";
+      let boardKey = source === "unplayed" ? "unplayed" : "pool";
       if (source === "custom") {
         // Generate the custom board first, then start a game on it.
         const filled = cats.map((c) => c.trim()).filter(Boolean);
@@ -44,7 +45,7 @@ export default function LiveEntryPage() {
         if (!res.ok) throw new Error(data.error ?? "Couldn't generate the board.");
         boardKey = String(data.key);
       }
-      const { code } = await liveCreate(user, name, mode, boardKey);
+      const { code } = await liveCreate(user, name, mode, boardKey, answerMs);
       router.push(`/live/${code}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't start a game.");
@@ -124,8 +125,14 @@ export default function LiveEntryPage() {
             {/* Board source */}
             <div>
               <p className="text-xs uppercase tracking-wider text-blue-200/40 mb-2">Board</p>
-              <div className="grid grid-cols-2 gap-2 p-1 bg-board-deep rounded-lg">
-                {(["pool", "custom"] as const).map((s) => (
+              <div className="grid grid-cols-3 gap-2 p-1 bg-board-deep rounded-lg">
+                {(
+                  [
+                    ["pool", "Fresh AI"],
+                    ["unplayed", "Real episode"],
+                    ["custom", "Custom"],
+                  ] as const
+                ).map(([s, label]) => (
                   <button
                     key={s}
                     onClick={() => setSource(s)}
@@ -133,10 +140,15 @@ export default function LiveEntryPage() {
                       source === s ? "bg-gold text-board-deep" : "text-blue-200/70 hover:text-blue-100"
                     }`}
                   >
-                    {s === "pool" ? "Fresh AI board" : "Custom categories"}
+                    {label}
                   </button>
                 ))}
               </div>
+              {source === "unplayed" && (
+                <p className="text-xs text-blue-200/50 mt-2">
+                  A real Jeopardy! episode you haven&apos;t played yet, picked at random.
+                </p>
+              )}
               {source === "custom" && (
                 <div className="mt-3 space-y-2">
                   <p className="text-xs text-blue-200/50">Name up to 6 categories; Claude writes the clues.</p>
@@ -159,6 +171,26 @@ export default function LiveEntryPage() {
                 </Link>{" "}
                 and use its Play-with-friends button.
               </p>
+            </div>
+
+            {/* Answer timer setting */}
+            <div>
+              <p className="text-xs uppercase tracking-wider text-blue-200/40 mb-2">
+                Answer timer · {answerMs / 1000}s
+              </p>
+              <div className="grid grid-cols-5 gap-2">
+                {[5000, 10000, 15000, 20000, 30000].map((ms) => (
+                  <button
+                    key={ms}
+                    onClick={() => setAnswerMs(ms)}
+                    className={`rounded-md py-2 text-sm font-display tracking-wide transition-colors ${
+                      answerMs === ms ? "bg-gold text-board-deep" : "bg-board-deep text-blue-200/70 hover:text-blue-100"
+                    }`}
+                  >
+                    {ms / 1000}s
+                  </button>
+                ))}
+              </div>
             </div>
 
             <button
