@@ -13,9 +13,12 @@ export default function Home() {
             A new Jeopardy!-style board every day — two rounds, 60 clues, Daily Doubles and all,
             written and judged by Claude. Type your answer; a lenient AI host rules on it.
           </p>
-          <div className="mt-3 flex items-center justify-center gap-4 text-sm">
+          <div className="mt-3 flex items-center justify-center gap-x-4 gap-y-1 text-sm flex-wrap">
             <Link href="/live" className="text-gold/80 hover:text-gold underline">
               Play with friends →
+            </Link>
+            <Link href="/history" className="text-gold/80 hover:text-gold underline">
+              Jeopardy! archive →
             </Link>
             <Link href="/boards" className="text-gold/80 hover:text-gold underline">
               Past boards →

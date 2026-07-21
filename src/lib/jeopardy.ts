@@ -559,6 +559,7 @@ export function isValidDateKey(date: string): boolean {
 }
 
 const BOARDS = "jeopardyBoards";
+const HISTORICAL_BOARDS = "historicalBoards";
 
 // Boards are immutable once written, so a per-instance memo is safe and keeps
 // judge calls from re-reading Firestore on every answer.
@@ -580,6 +581,22 @@ export async function getBoardForDate(date: string): Promise<Board | null> {
   const snap = await ref.get();
   if (snap.exists) {
     const board = boardFromDoc(snap.data()!);
+    memo.set(date, board);
+    return board;
+  }
+
+  // Historical J-Archive boards are keyed by real air date (e.g. 1995-03-10),
+  // which never collides with a daily-board date, so falling back here makes
+  // every real episode fully playable/judgeable through the exact same flow.
+  const hist = await db().collection(HISTORICAL_BOARDS).doc(date).get();
+  if (hist.exists) {
+    const data = hist.data()!;
+    const board: Board = {
+      boardId: `jarchive-${data.gameId ?? date}`,
+      date,
+      rounds: data.rounds,
+      final: data.final ?? undefined,
+    };
     memo.set(date, board);
     return board;
   }
