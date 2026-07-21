@@ -5,10 +5,14 @@
 export const COUNTDOWN_MS = 3000;
 export const ANSWER_MS = 10000; // default answer window
 export const ANSWER_MS_OPTIONS = [5000, 10000, 15000, 20000, 30000] as const;
+export const FINAL_WAGER_MS = 25000; // time to place a Final Jeopardy wager
+export const FINAL_ANSWER_MS = 30000; // Final Jeopardy answer window
 export const MAX_PLAYERS = 3;
 
 export type LiveMode = "normal" | "ranked";
-export type LivePhase = "lobby" | "picking" | "active" | "reveal" | "finished";
+// "final_wager" collects Final Jeopardy wagers; the final clue itself reuses
+// the "active" phase with currentClueId === "final".
+export type LivePhase = "lobby" | "picking" | "active" | "reveal" | "final_wager" | "finished";
 export type PauseReason = "manual" | "disconnect";
 
 // A player is considered disconnected if their last heartbeat is older than
@@ -24,6 +28,7 @@ export interface LivePlayer {
 export interface RevealResult {
   answer: string | null;
   outcome: "correct" | "wrong" | "none";
+  wager?: number; // Final Jeopardy only: the ± applied to this player's score
 }
 
 export interface LiveReveal {
@@ -60,6 +65,9 @@ export interface LiveGame {
   answeredClueIds: string[];
   countdownEndsAt: number | null;
   answerEndsAt: number | null;
+  // Final Jeopardy: per-player wagers, and the deadline to place them.
+  finalWagers: Record<string, number>;
+  finalWagerEndsAt: number | null;
   resolving: boolean;
   resolveClaimedAt: number | null;
   reveal: LiveReveal | null;

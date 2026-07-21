@@ -14,6 +14,8 @@ import {
   ANSWER_MS,
   ANSWER_MS_OPTIONS,
   COUNTDOWN_MS,
+  FINAL_ANSWER_MS,
+  FINAL_WAGER_MS,
   MAX_PLAYERS,
   type LiveGame,
   type LiveMode,
@@ -101,6 +103,8 @@ function toGame(id: string, data: FirebaseFirestore.DocumentData): LiveGame {
     answeredClueIds: data.answeredClueIds ?? [],
     countdownEndsAt: data.countdownEndsAt ?? null,
     answerEndsAt: data.answerEndsAt ?? null,
+    finalWagers: data.finalWagers ?? {},
+    finalWagerEndsAt: data.finalWagerEndsAt ?? null,
     resolving: data.resolving ?? false,
     resolveClaimedAt: data.resolveClaimedAt ?? null,
     reveal: data.reveal ?? null,
@@ -211,6 +215,8 @@ export async function createGame(
         answeredClueIds: [],
         countdownEndsAt: null,
         answerEndsAt: null,
+        finalWagers: {},
+        finalWagerEndsAt: null,
         resolving: false,
         resolveClaimedAt: null,
         reveal: null,
@@ -388,8 +394,17 @@ export async function resolveClue(gameId: string): Promise<void> {
   try {
     const board = await getGameBoard(claim);
     if (!board) throw new Error("no-board");
-    const found = findClue(board, clueId);
-    if (!found) throw new Error("no-clue");
+    const isFinal = clueId === "final";
+    // Resolve the clue from the grid, or from board.final for Final Jeopardy.
+    const clue = isFinal
+      ? board.final
+        ? { clue: board.final.clue, answer: board.final.answer, acceptable: board.final.acceptable, value: 0 }
+        : null
+      : findClue(board, clueId)?.clue ?? null;
+    const categoryTitle = isFinal
+      ? board.final?.category ?? "Final Jeopardy!"
+      : findClue(board, clueId)?.category.title ?? "";
+    if (!clue) throw new Error("no-clue");
 
     const subsSnap = await ref.collection("submissions").where("clueId", "==", clueId).get();
     const submissions = subsSnap.docs.map((d) => {
@@ -402,42 +417,52 @@ export async function resolveClue(gameId: string): Promise<void> {
       submissions.map(async (s) => {
         if (!s.answer) return { uid: s.uid, answer: s.answer, at: s.at, correct: false, comment: "" };
         const verdict = await judgeAnswer(
-          { title: found.category.title },
-          { clue: found.clue.clue, answer: found.clue.answer, acceptable: found.clue.acceptable },
+          { title: categoryTitle },
+          { clue: clue.clue, answer: clue.answer, acceptable: clue.acceptable },
           s.answer
         );
         return { uid: s.uid, answer: s.answer, at: s.at, correct: verdict.correct, comment: verdict.comment };
       })
     );
+    const byUid = new Map(judged.map((j) => [j.uid, j]));
 
-    const results: Record<string, RevealResult> = {};
-    for (const uid of claim.playerUids) results[uid] = { answer: null, outcome: "none" };
-    for (const j of judged) {
-      results[j.uid] = { answer: j.answer, outcome: j.correct ? "correct" : "wrong" };
-    }
     const firstComment = judged.find((j) => j.comment)?.comment ?? "";
 
-    // Fastest correct answerer controls the next pick (Jeopardy-style). If
-    // nobody was right, nextPickerUid stays null and the current picker keeps
-    // control (decided in continueGame).
+    // Fastest correct answerer controls the next pick (grid clues only).
     const correct = judged.filter((j) => j.correct).sort((a, b) => a.at - b.at);
-    const nextPickerUid = correct.length > 0 ? correct[0].uid : null;
+    const nextPickerUid = isFinal ? null : correct.length > 0 ? correct[0].uid : null;
 
     // 2. Commit the ruling: bump scores, write reveal, advance phase — all in
-    //    a transaction, guarded by `resolved` so this can't double-apply.
+    //    a transaction, guarded so this can't double-apply.
     await db().runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       const g = toGame(gameId, snap.data()!);
       if (g.answeredClueIds.includes(clueId)) return; // already committed
       const scores = { ...g.scores };
-      for (const j of judged) {
-        if (j.correct) scores[j.uid] = (scores[j.uid] ?? 0) + found.clue.value;
+      const results: Record<string, RevealResult> = {};
+
+      if (isFinal) {
+        // Every player wins or loses their wager; a non-answer loses it too.
+        for (const uid of g.playerUids) {
+          const j = byUid.get(uid);
+          const wager = g.finalWagers[uid] ?? 0;
+          const win = !!j?.correct;
+          scores[uid] = (scores[uid] ?? 0) + (win ? wager : -wager);
+          results[uid] = { answer: j?.answer ?? null, outcome: win ? "correct" : "wrong", wager: win ? wager : -wager };
+        }
+      } else {
+        for (const uid of g.playerUids) results[uid] = { answer: null, outcome: "none" };
+        for (const j of judged) {
+          results[j.uid] = { answer: j.answer, outcome: j.correct ? "correct" : "wrong" };
+          if (j.correct) scores[j.uid] = (scores[j.uid] ?? 0) + (clue.value ?? 0);
+        }
       }
+
       const reveal: LiveReveal = {
         clueId,
-        categoryTitle: found.category.title,
-        value: found.clue.value,
-        correctAnswer: found.clue.answer,
+        categoryTitle,
+        value: clue.value ?? 0,
+        correctAnswer: clue.answer,
         comment: firstComment,
         results,
       };
@@ -575,38 +600,57 @@ export async function continueGame(gameId: string, uid: string): Promise<void> {
   let roundIndex = game.roundIndex;
   let roundIds = currentRoundClueIds(board, roundIndex);
   const roundDone = roundIds.every((id) => game.answeredClueIds.includes(id));
+  const finalDone = game.answeredClueIds.includes("final");
 
+  // picking (grid continues) → final_wager (all grid rounds done, board has a
+  // Final and it hasn't been played) → finished.
   let phase: LivePhase = "picking";
   if (roundDone) {
     if (roundIndex + 1 < board.rounds.length) {
       roundIndex += 1;
       roundIds = currentRoundClueIds(board, roundIndex);
+    } else if (board.final && !finalDone) {
+      phase = "final_wager";
     } else {
       phase = "finished";
     }
   }
 
-  // The fastest correct answerer picks next; if nobody was right, the current
-  // picker keeps control (both fall back safely to the first player).
   const nextPicker = game.nextPickerUid ?? game.pickerUid ?? game.playerUids[0];
+  const now = Date.now();
 
   await db().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const g = toGame(gameId, snap.data()!);
     if (g.phase !== "reveal") return; // someone already continued
-    tx.update(ref, {
-      phase,
+
+    const base = {
       status: phase === "finished" ? "finished" : "in_progress",
-      roundIndex,
-      pickerUid: phase === "finished" ? null : nextPicker,
-      nextPickerUid: null,
       currentClueId: null,
       currentSubmittedUids: [],
       countdownEndsAt: null,
       answerEndsAt: null,
       reveal: null,
       updatedAt: FieldValue.serverTimestamp(),
-    });
+    };
+    if (phase === "final_wager") {
+      tx.update(ref, {
+        ...base,
+        phase: "final_wager",
+        pickerUid: null,
+        nextPickerUid: null,
+        finalWagers: {},
+        finalWagerEndsAt: now + FINAL_WAGER_MS,
+      });
+    } else {
+      tx.update(ref, {
+        ...base,
+        phase,
+        roundIndex,
+        pickerUid: phase === "finished" ? null : nextPicker,
+        nextPickerUid: null,
+      });
+    }
   });
 
   // On a ranked game finishing, apply Elo — idempotent (guarded by the game's
@@ -614,4 +658,53 @@ export async function continueGame(gameId: string, uid: string): Promise<void> {
   if (phase === "finished" && game.mode === "ranked") {
     await applyRankedResults(gameId).catch((e) => console.error("ranked apply failed:", e));
   }
+}
+
+// Final Jeopardy: each player wagers 0..(their current score). Once everyone
+// has wagered (or the wager deadline passes), the final clue opens.
+export async function submitFinalWager(gameId: string, uid: string, wager: number): Promise<void> {
+  const ref = gameRef(gameId);
+  await db().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error("no-game");
+    const g = toGame(gameId, snap.data()!);
+    if (!g.playerUids.includes(uid)) throw new Error("not-a-player");
+    if (g.phase !== "final_wager") throw new Error("bad-phase");
+    const max = Math.max(0, g.scores[uid] ?? 0);
+    const w = Math.min(max, Math.max(0, Math.round(Number(wager) || 0)));
+    tx.update(ref, { [`finalWagers.${uid}`]: w, updatedAt: FieldValue.serverTimestamp() });
+  });
+  await startFinalClue(gameId); // opens the clue if that was the last wager
+}
+
+// Transitions final_wager → the final clue once all wagers are in or the wager
+// window closes (missing wagers default to 0). Idempotent; any client may fire
+// it when the wager deadline passes.
+export async function startFinalClue(gameId: string): Promise<void> {
+  const ref = gameRef(gameId);
+  const now = Date.now();
+  await db().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const g = toGame(gameId, snap.data()!);
+    if (g.phase !== "final_wager") return;
+    const allWagered = g.playerUids.every((u) => u in g.finalWagers);
+    const deadlinePassed = g.finalWagerEndsAt !== null && now > g.finalWagerEndsAt;
+    if (!allWagered && !deadlinePassed) return;
+
+    const wagers = { ...g.finalWagers };
+    for (const u of g.playerUids) if (!(u in wagers)) wagers[u] = 0;
+    tx.update(ref, {
+      finalWagers: wagers,
+      phase: "active",
+      currentClueId: "final",
+      currentSubmittedUids: [],
+      countdownEndsAt: now + COUNTDOWN_MS,
+      answerEndsAt: now + COUNTDOWN_MS + FINAL_ANSWER_MS,
+      finalWagerEndsAt: null,
+      resolving: false,
+      resolveClaimedAt: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
 }

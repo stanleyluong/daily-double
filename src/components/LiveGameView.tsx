@@ -7,6 +7,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { useLiveGame } from "@/lib/useLiveGame";
 import {
   liveContinue,
+  liveFinalWager,
   liveHeartbeat,
   liveLeave,
   livePause,
@@ -14,6 +15,7 @@ import {
   liveReportDrop,
   liveResolve,
   liveStart,
+  liveStartFinal,
   liveSubmit,
 } from "@/lib/liveActions";
 import { formatMoney } from "@/lib/format";
@@ -119,6 +121,22 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
     }
     if (game.phase !== "active") resolvedFiredFor.current = null;
   }, [game, subPhase, user, run]);
+
+  // Open the final clue once the wager window closes (any client fires it).
+  const finalStartFiredRef = useRef(false);
+  useEffect(() => {
+    if (!game || !user) return;
+    if (
+      game.phase === "final_wager" &&
+      game.finalWagerEndsAt !== null &&
+      now > game.finalWagerEndsAt &&
+      !finalStartFiredRef.current
+    ) {
+      finalStartFiredRef.current = true;
+      run(() => liveStartFinal(user, game.id));
+    }
+    if (game.phase !== "final_wager") finalStartFiredRef.current = false;
+  }, [game, now, user, run]);
 
   // Presence heartbeat — ping while the game is running so others can see
   // this player is still connected. Depends only on status (not the whole
@@ -349,10 +367,22 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
           ))}
 
         {/* Active clue */}
+        {game.phase === "final_wager" && (
+          <FinalWager
+            game={game}
+            board={board}
+            now={now}
+            uid={uid}
+            nameFor={nameFor}
+            onWager={(w) => run(() => liveFinalWager(user!, game.id, w))}
+          />
+        )}
+
         {game.phase === "active" && (
           <ActiveClue
             game={game}
             round={round}
+            finalClue={board?.final ?? null}
             subPhase={subPhase}
             now={now}
             uid={uid}
@@ -557,6 +587,7 @@ function findClueText(round: PublicBoard["rounds"][number] | undefined, clueId: 
 function ActiveClue({
   game,
   round,
+  finalClue,
   subPhase,
   now,
   uid,
@@ -576,6 +607,7 @@ function ActiveClue({
     players: { uid: string; name: string }[];
   };
   round: PublicBoard["rounds"][number] | undefined;
+  finalClue: { category: string; clue: string } | null;
   subPhase: SubPhase | null;
   now: number;
   uid: string | null;
@@ -585,7 +617,12 @@ function ActiveClue({
   onSubmit: () => void;
   nameFor: (id: string) => string;
 }) {
-  const info = findClueText(round, game.currentClueId);
+  const isFinal = game.currentClueId === "final";
+  const info = isFinal
+    ? finalClue
+      ? { category: finalClue.category, clue: finalClue.clue, value: 0 }
+      : null
+    : findClueText(round, game.currentClueId);
   const iSubmitted = submittedClue === game.currentClueId || (uid !== null && game.currentSubmittedUids.includes(uid));
 
   if (subPhase === "countdown" && game.countdownEndsAt !== null) {
@@ -599,7 +636,7 @@ function ActiveClue({
     );
   }
 
-  const windowSecs = (game.answerMs ?? 10000) / 1000;
+  const windowSecs = isFinal ? 30 : (game.answerMs ?? 10000) / 1000;
   const remaining =
     game.answerEndsAt !== null ? Math.max(0, (game.answerEndsAt - now) / 1000) : 0;
   const pct =
@@ -609,7 +646,7 @@ function ActiveClue({
     <div className="max-w-2xl mx-auto bg-board rounded-lg shadow-2xl p-6 md:p-8">
       <div className="flex items-center justify-between mb-1">
         <p className="font-display tracking-wider text-gold uppercase text-sm">
-          {info?.category} · ${info?.value}
+          {isFinal ? `Final Jeopardy! · ${info?.category}` : `${info?.category} · $${info?.value}`}
         </p>
         {subPhase === "answering" && (
           <p className="font-display text-2xl text-gold tabular-nums">{Math.ceil(remaining)}</p>
@@ -693,7 +730,7 @@ function Reveal({
   return (
     <div className="max-w-2xl mx-auto bg-board rounded-lg shadow-2xl p-6 md:p-8 text-center">
       <p className="font-display tracking-wider text-gold uppercase text-sm mb-1">
-        {r.categoryTitle} · ${r.value}
+        {r.clueId === "final" ? `Final Jeopardy! · ${r.categoryTitle}` : `${r.categoryTitle} · $${r.value}`}
       </p>
       <p className="text-lg mb-1">
         <span className="text-blue-200/60">Answer: </span>
@@ -719,7 +756,13 @@ function Reveal({
                         : "text-blue-200/30"
                   }
                 >
-                  {outcome === "correct" ? `+$${r.value}` : outcome === "wrong" ? "✗" : "–"}
+                  {res?.wager !== undefined
+                    ? `${res.wager >= 0 ? "+" : "−"}$${Math.abs(res.wager).toLocaleString()}`
+                    : outcome === "correct"
+                      ? `+$${r.value}`
+                      : outcome === "wrong"
+                        ? "✗"
+                        : "–"}
                 </span>
               </span>
             </div>
@@ -735,6 +778,92 @@ function Reveal({
           Continue →
         </button>
       )}
+    </div>
+  );
+}
+
+// Final Jeopardy wager entry — everyone secretly wagers 0..their current score.
+function FinalWager({
+  game,
+  board,
+  now,
+  uid,
+  nameFor,
+  onWager,
+}: {
+  game: {
+    scores: Record<string, number>;
+    players: { uid: string; name: string }[];
+    playerUids: string[];
+    finalWagers: Record<string, number>;
+    finalWagerEndsAt: number | null;
+  };
+  board: PublicBoard | null;
+  now: number;
+  uid: string | null;
+  nameFor: (id: string) => string;
+  onWager: (wager: number) => void;
+}) {
+  const [wagerInput, setWagerInput] = useState("");
+  const myScore = uid ? game.scores[uid] ?? 0 : 0;
+  const maxWager = Math.max(0, myScore);
+  const iWagered = uid !== null && uid in game.finalWagers;
+  const secsLeft =
+    game.finalWagerEndsAt !== null ? Math.max(0, Math.ceil((game.finalWagerEndsAt - now) / 1000)) : null;
+
+  return (
+    <div className="max-w-lg mx-auto bg-board rounded-lg shadow-2xl p-6 md:p-8 text-center">
+      <p className="font-display text-4xl tracking-widest text-gold mb-1 animate-pulse">FINAL JEOPARDY!</p>
+      <p className="text-blue-200/70 mb-1">
+        Category: <span className="text-foreground">{board?.final?.category ?? "…"}</span>
+      </p>
+      {secsLeft !== null && <p className="text-xs text-blue-200/40 mb-5">Wager within {secsLeft}s</p>}
+
+      {!iWagered ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const w = Math.min(maxWager, Math.max(0, Math.round(Number(wagerInput) || 0)));
+            onWager(w);
+          }}
+        >
+          <label className="block text-sm text-blue-200/70 mb-2">
+            Your wager — $0 to ${maxWager.toLocaleString()} (your score)
+          </label>
+          <input
+            autoFocus
+            type="number"
+            min={0}
+            max={maxWager}
+            step={1}
+            value={wagerInput}
+            onChange={(e) => setWagerInput(e.target.value)}
+            placeholder="0"
+            className="w-full text-center rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-2xl font-display tracking-wide placeholder:text-blue-200/30 mb-4"
+          />
+          <button
+            type="submit"
+            className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
+          >
+            Lock in wager
+          </button>
+        </form>
+      ) : (
+        <p className="text-green-400/90 py-3">Wager locked in — waiting for the others…</p>
+      )}
+
+      <div className="flex gap-2 justify-center mt-5 flex-wrap">
+        {game.players.map((p) => (
+          <span
+            key={p.uid}
+            className={`text-xs px-2 py-1 rounded-full border ${
+              p.uid in game.finalWagers ? "border-green-400/40 text-green-300" : "border-blue-300/20 text-blue-200/40"
+            }`}
+          >
+            {nameFor(p.uid)} {p.uid in game.finalWagers ? "✓" : "…"}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

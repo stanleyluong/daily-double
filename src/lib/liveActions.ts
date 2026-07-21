@@ -35,6 +35,9 @@ export const liveSubmit = (user: User, gameId: string, clueId: string, answer: s
   post(user, "submit", { gameId, clueId, answer });
 export const liveResolve = (user: User, gameId: string) => post(user, "resolve", { gameId });
 export const liveContinue = (user: User, gameId: string) => post(user, "continue", { gameId });
+export const liveFinalWager = (user: User, gameId: string, wager: number) =>
+  post(user, "final-wager", { gameId, wager });
+export const liveStartFinal = (user: User, gameId: string) => post(user, "final-start", { gameId });
 export const liveHeartbeat = (user: User, gameId: string) => post(user, "heartbeat", { gameId });
 export const liveLeave = (user: User, gameId: string) => post(user, "leave", { gameId });
 export const liveReportDrop = (user: User, gameId: string, droppedUid: string) =>
