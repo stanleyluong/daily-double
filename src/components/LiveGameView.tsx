@@ -19,6 +19,8 @@ import {
 import { formatMoney } from "@/lib/format";
 import { DISCONNECT_MS, HEARTBEAT_MS, type LiveReveal } from "@/lib/liveTypes";
 import { isMuted, playSound, setMuted, type SoundName } from "@/lib/sounds";
+import { useFriends } from "@/components/FriendsProvider";
+import { inviteFriend } from "@/lib/friendsClient";
 
 // Derived sub-phase of an "active" clue, computed from the absolute deadlines
 // on the game doc against the local clock (good enough for a casual game; a
@@ -315,6 +317,8 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
               <p className="text-blue-200/60">Waiting for {nameFor(game.hostUid)} to start…</p>
             )}
             {!isMember && <p className="text-red-300 text-sm mt-4">You&apos;re not in this game.</p>}
+
+            <InviteFriends gameCode={game.id} playerUids={game.playerUids} />
           </div>
         )}
 
@@ -415,6 +419,40 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
 }
 
 /* ---------- sub-components ---------- */
+
+// Invite online friends who aren't already in the game, straight from the lobby.
+function InviteFriends({ gameCode, playerUids }: { gameCode: string; playerUids: string[] }) {
+  const { user } = useAuth();
+  const { data } = useFriends();
+  const [invited, setInvited] = useState<Set<string>>(new Set());
+  const candidates = (data?.friends ?? []).filter((f) => !playerUids.includes(f.uid));
+  if (!user || candidates.length === 0) return null;
+
+  return (
+    <div className="mt-6 pt-5 border-t border-board text-left">
+      <p className="text-xs uppercase tracking-wider text-blue-200/40 mb-2">Invite friends</p>
+      <ul className="space-y-1.5">
+        {candidates.map((f) => (
+          <li key={f.uid} className="flex items-center gap-2.5">
+            <span className={`h-2 w-2 rounded-full ${f.online ? "bg-green-400" : "bg-blue-200/25"}`} />
+            <span className="flex-1 text-sm text-blue-100 truncate">{f.name}</span>
+            <button
+              disabled={invited.has(f.uid)}
+              onClick={() =>
+                inviteFriend(user, f.uid, gameCode)
+                  .then(() => setInvited((s) => new Set(s).add(f.uid)))
+                  .catch(() => {})
+              }
+              className="text-xs font-display tracking-wide border border-gold/40 text-gold hover:bg-board px-3 py-1 rounded disabled:opacity-40"
+            >
+              {invited.has(f.uid) ? "Invited ✓" : "Invite"}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (

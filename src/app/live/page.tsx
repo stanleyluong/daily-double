@@ -82,6 +82,9 @@ export default function LiveEntryPage() {
             <Link href="/" className="text-gold/80 hover:text-gold underline">
               ← Solo board
             </Link>
+            <Link href="/friends" className="text-gold/80 hover:text-gold underline">
+              Friends →
+            </Link>
             <Link href="/rankings" className="text-gold/80 hover:text-gold underline">
               Ranked leaderboard →
             </Link>

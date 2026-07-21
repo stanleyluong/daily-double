@@ -3,6 +3,8 @@ import { Bebas_Neue, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AccountBar from "@/components/AccountBar";
 import AuthProvider from "@/components/AuthProvider";
+import FriendsProvider from "@/components/FriendsProvider";
+import InviteBanner from "@/components/InviteBanner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -42,8 +44,11 @@ export default function RootLayout({
           mismatch — this is the documented fix, scoped to this one element. */}
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <AuthProvider>
-          <AccountBar />
-          {children}
+          <FriendsProvider>
+            <AccountBar />
+            {children}
+            <InviteBanner />
+          </FriendsProvider>
         </AuthProvider>
       </body>
     </html>
