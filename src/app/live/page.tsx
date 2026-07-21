@@ -12,6 +12,7 @@ export default function LiveEntryPage() {
   const router = useRouter();
   const [showAuth, setShowAuth] = useState(false);
   const [code, setCode] = useState("");
+  const [mode, setMode] = useState<"normal" | "ranked">("normal");
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,7 +23,7 @@ export default function LiveEntryPage() {
     setBusy("create");
     setError(null);
     try {
-      const { code } = await liveCreate(user, name);
+      const { code } = await liveCreate(user, name, mode);
       router.push(`/live/${code}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't start a game.");
@@ -55,9 +56,14 @@ export default function LiveEntryPage() {
             Up to 3 players, one board. Everyone gets 10 seconds to answer each clue — fastest connection
             doesn&apos;t win, the right answer does.
           </p>
-          <Link href="/" className="inline-block mt-3 text-gold/80 hover:text-gold underline">
-            ← Solo board
-          </Link>
+          <div className="mt-3 flex items-center justify-center gap-4 text-sm">
+            <Link href="/" className="text-gold/80 hover:text-gold underline">
+              ← Solo board
+            </Link>
+            <Link href="/rankings" className="text-gold/80 hover:text-gold underline">
+              Ranked leaderboard →
+            </Link>
+          </div>
         </header>
 
         {loading ? (
@@ -74,12 +80,32 @@ export default function LiveEntryPage() {
           </div>
         ) : (
           <div className="space-y-6">
+            {/* Mode toggle */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-board-deep rounded-lg">
+              {(["normal", "ranked"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  className={`rounded-md py-2 font-display tracking-wide transition-colors ${
+                    mode === m ? "bg-gold text-board-deep" : "text-blue-200/70 hover:text-blue-100"
+                  }`}
+                >
+                  {m === "normal" ? "Normal" : "Ranked"}
+                </button>
+              ))}
+            </div>
+            <p className="text-center text-xs text-blue-200/50 -mt-3">
+              {mode === "normal"
+                ? "Casual — any player can pause the game anytime."
+                : "Counts toward your rating. No pausing; needs 2+ players."}
+            </p>
+
             <button
               onClick={start}
               disabled={busy !== null}
               className="w-full font-display text-2xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-4 rounded-lg disabled:opacity-50"
             >
-              {busy === "create" ? "Starting…" : "Start a new game"}
+              {busy === "create" ? "Starting…" : `Start ${mode === "ranked" ? "ranked " : ""}game`}
             </button>
 
             <div className="flex items-center gap-3 text-blue-200/40 text-sm">

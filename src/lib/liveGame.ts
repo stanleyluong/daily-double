@@ -13,14 +13,16 @@ import {
   COUNTDOWN_MS,
   MAX_PLAYERS,
   type LiveGame,
+  type LiveMode,
   type LivePhase,
   type LivePlayer,
   type LiveReveal,
   type RevealResult,
 } from "@/lib/liveTypes";
+import { applyRankedResults } from "@/lib/ranking";
 
 export { ANSWER_MS, COUNTDOWN_MS } from "@/lib/liveTypes";
-export type { LiveGame, LivePhase, LivePlayer, LiveReveal, RevealResult } from "@/lib/liveTypes";
+export type { LiveGame, LiveMode, LivePhase, LivePlayer, LiveReveal, RevealResult } from "@/lib/liveTypes";
 
 // ---------------------------------------------------------------------------
 // Live (multiplayer) games. Server-authoritative, exactly like the single-
@@ -78,6 +80,7 @@ function toGame(id: string, data: FirebaseFirestore.DocumentData): LiveGame {
   return {
     id,
     status: data.status,
+    mode: data.mode ?? "normal",
     hostUid: data.hostUid,
     boardDate: data.boardDate,
     players: data.players ?? [],
@@ -94,6 +97,11 @@ function toGame(id: string, data: FirebaseFirestore.DocumentData): LiveGame {
     resolving: data.resolving ?? false,
     resolveClaimedAt: data.resolveClaimedAt ?? null,
     reveal: data.reveal ?? null,
+    paused: data.paused ?? false,
+    pausedBy: data.pausedBy ?? null,
+    pausedCountdownRemaining: data.pausedCountdownRemaining ?? null,
+    pausedAnswerRemaining: data.pausedAnswerRemaining ?? null,
+    rated: data.rated ?? false,
   };
 }
 
@@ -102,7 +110,7 @@ export async function getGame(id: string): Promise<LiveGame | null> {
   return snap.exists ? toGame(id, snap.data()!) : null;
 }
 
-export async function createGame(uid: string, name: string): Promise<string> {
+export async function createGame(uid: string, name: string, mode: LiveMode = "normal"): Promise<string> {
   const boardDate = await pickBoardDate();
   const player: LivePlayer = { uid, name: cleanName(name, "Player 1") };
 
@@ -112,6 +120,7 @@ export async function createGame(uid: string, name: string): Promise<string> {
     try {
       await gameRef(code).create({
         status: "lobby",
+        mode: mode === "ranked" ? "ranked" : "normal",
         hostUid: uid,
         boardDate,
         players: [player],
@@ -128,6 +137,11 @@ export async function createGame(uid: string, name: string): Promise<string> {
         resolving: false,
         resolveClaimedAt: null,
         reveal: null,
+        paused: false,
+        pausedBy: null,
+        pausedCountdownRemaining: null,
+        pausedAnswerRemaining: null,
+        rated: false,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -169,6 +183,8 @@ export async function startGame(gameId: string, uid: string): Promise<void> {
     const game = toGame(gameId, snap.data()!);
     if (game.hostUid !== uid) throw new Error("not-host");
     if (game.status !== "lobby") throw new Error("already-started");
+    // Ranked games affect ratings, so they need a real opponent.
+    if (game.mode === "ranked" && game.players.length < 2) throw new Error("ranked-needs-2");
 
     tx.update(ref, {
       status: "in_progress",
@@ -212,6 +228,10 @@ export async function pickClue(gameId: string, uid: string, clueId: string): Pro
       resolving: false,
       resolveClaimedAt: null,
       reveal: null,
+      paused: false,
+      pausedBy: null,
+      pausedCountdownRemaining: null,
+      pausedAnswerRemaining: null,
       updatedAt: FieldValue.serverTimestamp(),
     });
   });
@@ -228,6 +248,7 @@ export async function submitAnswer(
   if (!game) throw new Error("no-game");
   if (!game.playerUids.includes(uid)) throw new Error("not-a-player");
   if (game.phase !== "active" || game.currentClueId !== clueId) throw new Error("bad-phase");
+  if (game.paused) throw new Error("paused");
   if (game.answerEndsAt !== null && Date.now() > game.answerEndsAt) throw new Error("too-late");
 
   const clean = (answer ?? "").trim().slice(0, 200);
@@ -258,6 +279,7 @@ export async function resolveClue(gameId: string): Promise<void> {
     if (!snap.exists) return null;
     const g = toGame(gameId, snap.data()!);
     if (g.phase !== "active" || !g.currentClueId) return null;
+    if (g.paused) return null; // clock is frozen; don't resolve while paused
     if (g.answerEndsAt !== null && now < g.answerEndsAt) return null; // not time yet
     const stalled = g.resolveClaimedAt !== null && now - g.resolveClaimedAt > RESOLVE_GRACE_MS;
     if (g.resolving && !stalled) return null; // someone else owns it
@@ -331,6 +353,64 @@ export async function resolveClue(gameId: string): Promise<void> {
   }
 }
 
+// Pause / resume — normal mode only, any player. A mid-clue pause freezes the
+// running timer by storing how much of the countdown and the answer window
+// were left; resume recomputes the absolute deadlines from "now" so no wall-
+// clock time is lost while paused. Pausing outside an active clue (lobby,
+// picking, reveal) just sets the flag.
+export async function pauseGame(gameId: string, uid: string): Promise<void> {
+  const ref = gameRef(gameId);
+  const now = Date.now();
+  await db().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error("no-game");
+    const g = toGame(gameId, snap.data()!);
+    if (!g.playerUids.includes(uid)) throw new Error("not-a-player");
+    if (g.mode === "ranked") throw new Error("ranked-no-pause");
+    if (g.status === "finished") throw new Error("bad-phase");
+    if (g.paused) return; // already paused, idempotent
+
+    const patch: Record<string, unknown> = {
+      paused: true,
+      pausedBy: uid,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (g.phase === "active") {
+      patch.pausedCountdownRemaining = g.countdownEndsAt !== null ? Math.max(0, g.countdownEndsAt - now) : 0;
+      patch.pausedAnswerRemaining = g.answerEndsAt !== null ? Math.max(0, g.answerEndsAt - now) : 0;
+    }
+    tx.update(ref, patch);
+  });
+}
+
+export async function resumeGame(gameId: string, uid: string): Promise<void> {
+  const ref = gameRef(gameId);
+  const now = Date.now();
+  await db().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error("no-game");
+    const g = toGame(gameId, snap.data()!);
+    if (!g.playerUids.includes(uid)) throw new Error("not-a-player");
+    if (!g.paused) return; // already running, idempotent
+
+    const patch: Record<string, unknown> = {
+      paused: false,
+      pausedBy: null,
+      pausedCountdownRemaining: null,
+      pausedAnswerRemaining: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    // Re-anchor a frozen mid-clue timer to the current wall clock.
+    if (g.phase === "active" && g.pausedAnswerRemaining !== null) {
+      patch.countdownEndsAt = now + (g.pausedCountdownRemaining ?? 0);
+      patch.answerEndsAt = now + g.pausedAnswerRemaining;
+      patch.resolveClaimedAt = null;
+      patch.resolving = false;
+    }
+    tx.update(ref, patch);
+  });
+}
+
 // After the reveal, advance: rotate the pick, cross into round 2 when the
 // current round is done, or finish when the whole board is answered.
 export async function continueGame(gameId: string, uid: string): Promise<void> {
@@ -379,4 +459,10 @@ export async function continueGame(gameId: string, uid: string): Promise<void> {
       updatedAt: FieldValue.serverTimestamp(),
     });
   });
+
+  // On a ranked game finishing, apply Elo — idempotent (guarded by the game's
+  // `rated` flag), so a redundant continue into the finish is safe.
+  if (phase === "finished" && game.mode === "ranked") {
+    await applyRankedResults(gameId).catch((e) => console.error("ranked apply failed:", e));
+  }
 }

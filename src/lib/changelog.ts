@@ -11,6 +11,16 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: "2026-07-20",
+    title: "Ranked mode, ratings & pause",
+    tag: "new",
+    items: [
+      "Choose your game type: Normal for casual play, or Ranked to climb a competitive ladder.",
+      "Ranked games give every player an Elo-style rating — beat higher-rated opponents to climb faster. See where you stand on the new Ranked Leaderboard.",
+      "In Normal games, any player can pause and resume anytime — the clue timer freezes and picks up right where it left off. Ranked games can't be paused.",
+    ],
+  },
+  {
+    date: "2026-07-20",
     title: "Live multiplayer",
     tag: "new",
     items: [

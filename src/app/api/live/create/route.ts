@@ -13,14 +13,17 @@ export async function POST(request: Request) {
   if (!uid) return NextResponse.json({ error: "Sign in to start a game." }, { status: 401 });
 
   let name = "";
+  let mode: "normal" | "ranked" = "normal";
   try {
-    ({ name = "" } = (await request.json()) as { name?: string });
+    const body = (await request.json()) as { name?: string; mode?: string };
+    name = body.name ?? "";
+    if (body.mode === "ranked") mode = "ranked";
   } catch {
-    /* name is optional */
+    /* name/mode are optional */
   }
 
   try {
-    const code = await createGame(uid, name);
+    const code = await createGame(uid, name, mode);
     return NextResponse.json({ code });
   } catch (error) {
     return NextResponse.json(

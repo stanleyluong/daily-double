@@ -7,6 +7,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { useLiveGame } from "@/lib/useLiveGame";
 import {
   liveContinue,
+  livePause,
   livePick,
   liveResolve,
   liveStart,
@@ -82,14 +83,15 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
     if (!game || game.phase !== "active" || game.countdownEndsAt === null || game.answerEndsAt === null) {
       return null;
     }
+    if (game.paused) return "answering"; // frozen; overlay covers it, resolve is gated
     if (now < game.countdownEndsAt) return "countdown";
     if (now < game.answerEndsAt) return "answering";
     return "timeup";
   }, [game, now]);
 
-  // Any client fires resolve once, when the answer window closes.
+  // Any client fires resolve once, when the answer window closes (never while paused).
   useEffect(() => {
-    if (!game || !user) return;
+    if (!game || !user || game.paused) return;
     if (game.phase === "active" && subPhase === "timeup" && resolvedFiredFor.current !== game.currentClueId) {
       resolvedFiredFor.current = game.currentClueId;
       run(() => liveResolve(user, game.id));
@@ -136,9 +138,27 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
             <Link href="/live" className="text-xs text-blue-200/50 hover:text-gold">
               ← Leave
             </Link>
-            <h1 className="font-display text-2xl tracking-wider text-gold mt-1">
+            <h1 className="font-display text-2xl tracking-wider text-gold mt-1 flex items-center gap-2">
               Game <span className="tracking-[0.2em]">{game.id}</span>
+              <span
+                className={`text-[10px] font-mono tracking-wider px-2 py-0.5 rounded-full align-middle ${
+                  game.mode === "ranked"
+                    ? "bg-gold text-board-deep"
+                    : "border border-blue-300/30 text-blue-200/70"
+                }`}
+              >
+                {game.mode === "ranked" ? "RANKED" : "NORMAL"}
+              </span>
             </h1>
+            {/* Pause control — normal mode, in-progress only */}
+            {game.mode === "normal" && game.status === "in_progress" && (
+              <button
+                onClick={() => run(() => livePause(user!, game.id, !game.paused))}
+                className="mt-2 text-xs font-mono uppercase tracking-wider text-blue-200/60 hover:text-gold"
+              >
+                {game.paused ? "▶ Resume" : "❚❚ Pause"}
+              </button>
+            )}
           </div>
           <Scoreboard game={game} uid={uid} nameFor={nameFor} />
         </div>
@@ -232,6 +252,24 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
         {/* Finished */}
         {game.phase === "finished" && <Finished game={game} uid={uid} nameFor={nameFor} />}
       </main>
+
+      {/* Pause overlay — any player can resume (normal mode) */}
+      {game.paused && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="text-center">
+            <p className="font-display text-6xl tracking-widest text-gold mb-3">PAUSED</p>
+            <p className="text-blue-200/70 mb-6">
+              {game.pausedBy ? `Paused by ${nameFor(game.pausedBy)}` : "Game paused"}
+            </p>
+            <button
+              onClick={() => run(() => livePause(user!, game.id, false))}
+              className="font-display text-2xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-8 py-3 rounded"
+            >
+              ▶ Resume
+            </button>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div
