@@ -67,6 +67,38 @@ function roundClueIds(board: PublicBoard, roundIndex: number): string[] {
   return round.categories.flatMap((c) => c.clues.map((cl) => cl.id));
 }
 
+// Purely cosmetic — the score snapping instantly on every answer read as
+// static. This animates the *displayed* number toward the real score over
+// ~600ms; every actual calculation (wagers, persistence, submission) still
+// reads the real `score` state directly, never this.
+function useAnimatedNumber(target: number, durationMs = 600): number {
+  const [display, setDisplay] = useState(target);
+  const fromRef = useRef(target);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const from = fromRef.current;
+    if (from === target) return;
+    const start = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / durationMs);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(Math.round(from + (target - from) * eased));
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(step);
+      } else {
+        fromRef.current = target;
+      }
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [target, durationMs]);
+
+  return display;
+}
+
 export default function Game({ date }: { date?: string }) {
   const { user } = useAuth();
   const [board, setBoard] = useState<PublicBoard | null>(null);
@@ -76,6 +108,9 @@ export default function Game({ date }: { date?: string }) {
   const [score, setScore] = useState(0);
   const [roundIndex, setRoundIndex] = useState(0);
   const [openMobileCategory, setOpenMobileCategory] = useState<string | null>(null);
+  const [focusedCell, setFocusedCell] = useState({ row: 0, col: 0 });
+  const [prevRoundIndexForFocus, setPrevRoundIndexForFocus] = useState(0);
+  const cellRefs = useRef<(HTMLButtonElement | null)[][]>([]);
   const [active, setActive] = useState<ActiveClue | null>(null);
   const [phase, setPhase] = useState<"wager" | "answering" | "judging" | "result">("answering");
   const [wagerInput, setWagerInput] = useState("");
@@ -91,6 +126,8 @@ export default function Game({ date }: { date?: string }) {
   const [stats, setStats] = useState<PercentileStats | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMessage, setAuthModalMessage] = useState<string | undefined>(undefined);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const wagerRef = useRef<HTMLInputElement>(null);
   // Timer + submission flags live in a ref so persist() never sees stale state.
@@ -100,12 +137,27 @@ export default function Game({ date }: { date?: string }) {
     submitted: false,
   });
 
+  // Non-blocking replacement for alert() — a dismissable banner instead of
+  // a native popup that halts the page.
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 5000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
   const totalClues = useMemo(
     () =>
       (board?.rounds.reduce((n, r) => n + r.categories.reduce((m, c) => m + c.clues.length, 0), 0) ?? 0) +
       (board?.final ? 1 : 0),
     [board]
   );
+  const displayedScore = useAnimatedNumber(score);
   const answeredCount = Object.keys(results).length;
   const finished = board !== null && totalClues > 0 && answeredCount === totalClues;
   const currentRoundIds = useMemo(() => (board ? roundClueIds(board, roundIndex) : []), [board, roundIndex]);
@@ -285,9 +337,9 @@ export default function Game({ date }: { date?: string }) {
     if (board) localStorage.removeItem(storageKey(board.date));
     setActive(null);
     setVerdict(null);
-    alert("This board was refreshed on the server — reloading it now.");
+    showToast("This board was refreshed on the server — reloading it now.");
     fetchBoard();
-  }, [board, fetchBoard]);
+  }, [board, fetchBoard, showToast]);
 
   const submitAnswer = useCallback(
     async (reveal: boolean) => {
@@ -329,10 +381,10 @@ export default function Game({ date }: { date?: string }) {
         });
       } catch (error) {
         setPhase("answering");
-        alert(error instanceof Error ? error.message : "Judging failed — try again.");
+        showToast(error instanceof Error ? error.message : "Judging failed — try again.");
       }
     },
-    [board, active, user, input, recordResult, handleBoardChanged]
+    [board, active, user, input, recordResult, handleBoardChanged, showToast]
   );
 
   const openClue = (clue: PublicClue, categoryTitle: string) => {
@@ -417,6 +469,63 @@ export default function Game({ date }: { date?: string }) {
     persist(results, score, next);
   };
 
+  // Arrow-key navigation for the desktop grid: moves in the given
+  // direction, skipping over already-answered (disabled) cells rather than
+  // getting stuck focused on a button that can't be activated. Bounded by
+  // grid size so it can't loop forever.
+  const moveFocus = useCallback(
+    (dRow: number, dCol: number) => {
+      const currentRound = board?.rounds[roundIndex];
+      if (!currentRound) return;
+      const rows = 5;
+      const cols = currentRound.categories.length;
+      let { row, col } = focusedCell;
+      for (let i = 0; i < Math.max(rows, cols); i++) {
+        const nextRow = row + dRow;
+        const nextCol = col + dCol;
+        if (nextRow < 0 || nextRow >= rows || nextCol < 0 || nextCol >= cols) break;
+        row = nextRow;
+        col = nextCol;
+        const clue = currentRound.categories[col]?.clues[row];
+        if (clue && !results[clue.id]) break;
+      }
+      setFocusedCell({ row, col });
+      cellRefs.current[row]?.[col]?.focus();
+    },
+    [board, roundIndex, focusedCell, results]
+  );
+
+  const onGridKeyDown = (e: React.KeyboardEvent) => {
+    switch (e.key) {
+      case "ArrowUp":
+        e.preventDefault();
+        moveFocus(-1, 0);
+        break;
+      case "ArrowDown":
+        e.preventDefault();
+        moveFocus(1, 0);
+        break;
+      case "ArrowLeft":
+        e.preventDefault();
+        moveFocus(0, -1);
+        break;
+      case "ArrowRight":
+        e.preventDefault();
+        moveFocus(0, 1);
+        break;
+    }
+  };
+
+  // A fresh round starts keyboard focus back at the top-left cell. Adjusted
+  // during render (React's documented "reset state when a value changes"
+  // pattern, via a state-tracked previous value) rather than in an effect,
+  // which would cause an extra cascading render for what's ultimately a
+  // render-time decision.
+  if (roundIndex !== prevRoundIndexForFocus) {
+    setPrevRoundIndexForFocus(roundIndex);
+    setFocusedCell({ row: 0, col: 0 });
+  }
+
   // Load the leaderboard once the game is over (and after submitting).
   useEffect(() => {
     if (!finished || !board || leaderboard) return;
@@ -477,7 +586,7 @@ export default function Game({ date }: { date?: string }) {
       }
       persist(results, score, roundIndex);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Couldn't save your score.");
+      showToast(error instanceof Error ? error.message : "Couldn't save your score.");
     } finally {
       setSubmitting(false);
     }
@@ -581,11 +690,21 @@ export default function Game({ date }: { date?: string }) {
           <p className="font-display tracking-wide text-gold text-sm uppercase">{round.name}</p>
         </div>
         <p className="font-display text-3xl tracking-wide">
-          <span className={score < 0 ? "text-red-400" : "text-gold"}>{formatMoney(score)}</span>
+          <span className={displayedScore < 0 ? "text-red-400" : "text-gold"}>
+            {formatMoney(displayedScore)}
+          </span>
           <span className="text-blue-200/50 text-lg ml-3">
             {answeredCount}/{totalClues}
           </span>
         </p>
+      </div>
+
+      {/* Progress bar */}
+      <div className="h-1.5 w-full bg-board-deep rounded-full overflow-hidden mb-4">
+        <div
+          className="h-full bg-gold rounded-full transition-[width] duration-500 ease-out"
+          style={{ width: totalClues > 0 ? `${(answeredCount / totalClues) * 100}%` : "0%" }}
+        />
       </div>
 
       {roundComplete ? (
@@ -595,7 +714,7 @@ export default function Game({ date }: { date?: string }) {
             {round.name} complete!
           </p>
           <p className="text-blue-200/70 mb-6">
-            Score so far: <span className="text-gold">{formatMoney(score)}</span>
+            Score so far: <span className="text-gold">{formatMoney(displayedScore)}</span>
           </p>
           {roundIndex + 1 < board.rounds.length ? (
             <button
@@ -680,7 +799,12 @@ export default function Game({ date }: { date?: string }) {
 
           {/* sm and up: the full grid, unchanged */}
           <div className="hidden sm:block overflow-x-auto pb-2">
-            <div className="grid grid-cols-6 gap-1.5 min-w-[680px]">
+            <div
+              className="grid grid-cols-6 gap-1.5 min-w-[680px]"
+              role="grid"
+              aria-label={`${round.name} board`}
+              onKeyDown={onGridKeyDown}
+            >
               {round.categories.map((cat) => (
                 <div
                   key={cat.title}
@@ -692,16 +816,24 @@ export default function Game({ date }: { date?: string }) {
                 </div>
               ))}
               {Array.from({ length: 5 }).map((_, row) =>
-                round.categories.map((cat) => {
+                round.categories.map((cat, col) => {
                   const clue = cat.clues[row];
                   if (!clue) return <div key={`${cat.title}-${row}`} />;
                   const result = results[clue.id];
+                  const isFocused = focusedCell.row === row && focusedCell.col === col;
                   return (
                     <button
                       key={clue.id}
+                      ref={(el) => {
+                        if (!cellRefs.current[row]) cellRefs.current[row] = [];
+                        cellRefs.current[row][col] = el;
+                      }}
                       onClick={() => openClue(clue, cat.title)}
+                      onFocus={() => setFocusedCell({ row, col })}
                       disabled={!!result}
-                      className={`rounded-sm min-h-[64px] md:min-h-[76px] flex items-center justify-center transition-colors ${
+                      tabIndex={isFocused ? 0 : -1}
+                      aria-label={`${cat.title}, $${clue.value}${result ? `, answered — ${result.outcome}` : ""}`}
+                      className={`rounded-sm min-h-[64px] md:min-h-[76px] flex items-center justify-center transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold focus-visible:outline-offset-2 ${
                         result
                           ? "bg-board/30 cursor-default"
                           : "bg-board hover:bg-board-deep cursor-pointer"
@@ -738,7 +870,7 @@ export default function Game({ date }: { date?: string }) {
         <div className="mt-8 bg-board-deep/60 border border-board rounded-lg p-6 md:p-8">
           <div className="text-center">
             <p className="font-display text-4xl tracking-wide text-gold mb-1">
-              Final score: {formatMoney(score)}
+              Final score: {formatMoney(displayedScore)}
             </p>
             <p className="text-blue-200/70 mb-5">
               {counts.correct} right · {counts.wrong} wrong · {counts.passed} passed
@@ -968,7 +1100,15 @@ export default function Game({ date }: { date?: string }) {
                 )}
 
                 {phase === "result" && verdict && (
-                  <div>
+                  <div
+                    className={`-mx-6 md:-mx-10 -mt-2 px-6 md:px-10 pt-2 rounded-t-lg ${
+                      verdict.outcome === "correct"
+                        ? "animate-flash-correct"
+                        : verdict.outcome === "wrong"
+                          ? "animate-flash-wrong"
+                          : ""
+                    }`}
+                  >
                     <p
                       className={`font-display text-3xl tracking-wide mb-2 ${
                         verdict.outcome === "correct"
@@ -1012,6 +1152,22 @@ export default function Game({ date }: { date?: string }) {
           state meant it silently had nowhere to render mid-game. */}
       {showAuthModal && (
         <AuthModal onClose={() => setShowAuthModal(false)} message={authModalMessage} />
+      )}
+
+      {toast && (
+        <div
+          role="alert"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] max-w-sm w-[calc(100%-2rem)] bg-board-deep border border-red-400/40 text-blue-50 rounded-lg shadow-2xl px-4 py-3 flex items-start gap-3"
+        >
+          <p className="text-sm flex-1">{toast}</p>
+          <button
+            onClick={() => setToast(null)}
+            aria-label="Dismiss"
+            className="text-blue-200/60 hover:text-blue-100 leading-none text-lg"
+          >
+            ×
+          </button>
+        </div>
       )}
     </div>
   );

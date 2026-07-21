@@ -27,3 +27,29 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
+
+@keyframes flash-correct {
+  0% {
+    background-color: rgba(74, 222, 128, 0.22);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes flash-wrong {
+  0% {
+    background-color: rgba(248, 113, 113, 0.22);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.animate-flash-correct {
+  animation: flash-correct 700ms ease-out;
+}
+
+.animate-flash-wrong {
+  animation: flash-wrong 700ms ease-out;
+}
