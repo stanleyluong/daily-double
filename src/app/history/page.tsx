@@ -1,8 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { HistoricalSummary } from "@/lib/historical";
+import { useAuth } from "@/components/AuthProvider";
+import AuthModal from "@/components/AuthModal";
+import { liveCreate } from "@/lib/liveActions";
 
 function formatDate(date: string): string {
   return new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
@@ -14,11 +18,26 @@ function formatDate(date: string): string {
 }
 
 export default function HistoryPage() {
+  const { user } = useAuth();
+  const router = useRouter();
   const [rows, setRows] = useState<HistoricalSummary[] | null>(null);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(""); // the query actually applied
   const [asc, setAsc] = useState(false); // date sort direction; false = newest first
   const [loading, setLoading] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [starting, setStarting] = useState<string | null>(null);
+
+  const playWithFriends = async (date: string) => {
+    if (!user) return setShowAuth(true);
+    setStarting(date);
+    try {
+      const { code } = await liveCreate(user, user.displayName ?? "", "normal", date);
+      router.push(`/live/${code}`);
+    } catch {
+      setStarting(null);
+    }
+  };
 
   const load = useCallback(async (q: string) => {
     setLoading(true);
@@ -146,12 +165,21 @@ export default function HistoryPage() {
                       ))}
                     </td>
                     <td className="px-4 py-3 align-top">
-                      <Link
-                        href={`/boards/${b.date}`}
-                        className="inline-block font-display tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-4 py-1.5 rounded whitespace-nowrap"
-                      >
-                        Play
-                      </Link>
+                      <div className="flex flex-col gap-1.5 items-stretch">
+                        <Link
+                          href={`/boards/${b.date}`}
+                          className="inline-block text-center font-display tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-4 py-1.5 rounded whitespace-nowrap"
+                        >
+                          Play
+                        </Link>
+                        <button
+                          onClick={() => playWithFriends(b.date)}
+                          disabled={starting !== null}
+                          className="text-center font-display tracking-wider border border-gold/40 text-gold hover:bg-board px-4 py-1.5 rounded whitespace-nowrap text-sm disabled:opacity-50"
+                        >
+                          {starting === b.date ? "…" : "+ Friends"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -169,6 +197,7 @@ export default function HistoryPage() {
       <footer className="text-center text-xs text-blue-200/40 py-6">
         Built by Stanley Luong · Historical clues via the J! Archive · Not affiliated with Jeopardy!
       </footer>
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} message="Sign in to play with friends." />}
     </div>
   );
 }

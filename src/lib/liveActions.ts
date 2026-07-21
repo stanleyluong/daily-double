@@ -17,8 +17,12 @@ async function post<T = unknown>(user: User, path: string, body: Record<string, 
   return data as T;
 }
 
-export const liveCreate = (user: User, name: string, mode: "normal" | "ranked" = "normal") =>
-  post<{ code: string }>(user, "create", { name, mode });
+export const liveCreate = (
+  user: User,
+  name: string,
+  mode: "normal" | "ranked" = "normal",
+  boardKey?: string
+) => post<{ code: string }>(user, "create", { name, mode, boardKey });
 export const livePause = (user: User, gameId: string, paused: boolean) =>
   post(user, "pause", { gameId, paused });
 export const liveJoin = (user: User, code: string, name: string) =>

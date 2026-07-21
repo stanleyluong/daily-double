@@ -164,8 +164,20 @@ export async function getPublicGameBoard(gameId: string): Promise<PublicBoard | 
   return board ? toPublicBoard(board) : null;
 }
 
-export async function createGame(uid: string, name: string, mode: LiveMode = "normal"): Promise<string> {
-  const boardDate = await pickBoardDate();
+// boardKey chooses the board source:
+//   undefined / "pool" → a fresh pre-generated AI board from the pool
+//   "YYYY-MM-DD"        → a specific daily or real historical episode
+//   "custom-{id}"       → a user-built custom board
+// A specific board skips the pool claim; getGameBoard() resolves it via
+// getBoardForDate() (which handles daily, historical, and custom keys).
+export async function createGame(
+  uid: string,
+  name: string,
+  mode: LiveMode = "normal",
+  boardKey?: string
+): Promise<string> {
+  const useSpecific = !!boardKey && boardKey !== "pool";
+  const boardDate = useSpecific ? boardKey! : await pickBoardDate();
   const player: LivePlayer = { uid, name: cleanName(name, "Player 1") };
 
   // Retry on the astronomically-unlikely code collision.
@@ -203,10 +215,12 @@ export async function createGame(uid: string, name: string, mode: LiveMode = "no
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
-      // Assign a fresh pooled board if one's available (fresh, non-repeating
-      // questions); otherwise the game falls back to its boardDate.
-      const boardId = await claimLiveBoard(code);
-      if (boardId) await gameRef(code).update({ boardId });
+      // Only the default "fresh AI" source draws from the pool; a specific
+      // board (historical episode or custom) plays exactly what was chosen.
+      if (!useSpecific) {
+        const boardId = await claimLiveBoard(code);
+        if (boardId) await gameRef(code).update({ boardId });
+      }
       return code;
     } catch {
       // code taken — try another

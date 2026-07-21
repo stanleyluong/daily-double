@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createGame } from "@/lib/liveGame";
+import { isValidBoardKey } from "@/lib/jeopardy";
 import { uidFromRequest } from "@/lib/requestAuth";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
@@ -14,16 +15,21 @@ export async function POST(request: Request) {
 
   let name = "";
   let mode: "normal" | "ranked" = "normal";
+  let boardKey: string | undefined;
   try {
-    const body = (await request.json()) as { name?: string; mode?: string };
+    const body = (await request.json()) as { name?: string; mode?: string; boardKey?: string };
     name = body.name ?? "";
     if (body.mode === "ranked") mode = "ranked";
+    if (typeof body.boardKey === "string" && body.boardKey) {
+      // Accept "pool", a date, or a custom key; ignore anything else.
+      if (body.boardKey === "pool" || isValidBoardKey(body.boardKey)) boardKey = body.boardKey;
+    }
   } catch {
-    /* name/mode are optional */
+    /* all optional */
   }
 
   try {
-    const code = await createGame(uid, name, mode);
+    const code = await createGame(uid, name, mode, boardKey);
     return NextResponse.json({ code });
   } catch (error) {
     return NextResponse.json(
