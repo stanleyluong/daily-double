@@ -872,10 +872,17 @@ export default function Game({ date }: { date?: string }) {
             <p className="font-display text-4xl tracking-wide text-gold mb-1">
               Final score: {formatMoney(displayedScore)}
             </p>
-            <p className="text-blue-200/70 mb-5">
+            <p className="text-blue-200/70 mb-4">
               {counts.correct} right · {counts.wrong} wrong · {counts.passed} passed
               {metaRef.current.durationMs ? ` · ${formatDuration(metaRef.current.durationMs)}` : ""}
             </p>
+            <button
+              onClick={shareResult}
+              className="inline-flex items-center gap-2 font-display tracking-wider bg-board hover:bg-board-deep border border-gold/40 text-gold px-5 py-2 rounded mb-5"
+            >
+              {copied ? "Copied to clipboard!" : "Share result"}
+              {!copied && <span aria-hidden>📋</span>}
+            </button>
           </div>
 
           {!submitted && !skippedSubmit && (

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import type { MyScoreRow } from "@/lib/scores";
 import type { PlayedRow } from "@/lib/played";
+import type { RankedStats } from "@/lib/liveTypes";
 import { formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
 
 const KIND_LABEL: Record<PlayedRow["kind"], string> = {
@@ -13,16 +14,27 @@ const KIND_LABEL: Record<PlayedRow["kind"], string> = {
   custom: "Custom",
 };
 
+function StatTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-board-deep/50 border border-board rounded-lg px-3 py-3 text-center">
+      <p className="font-display text-2xl md:text-3xl tracking-wide text-gold tabular-nums">{value}</p>
+      <p className="text-[11px] uppercase tracking-wider text-blue-200/50 mt-0.5">{label}</p>
+    </div>
+  );
+}
+
 export default function MyScoresPage() {
   const { user, loading } = useAuth();
   const [scores, setScores] = useState<MyScoreRow[] | null>(null);
   const [played, setPlayed] = useState<PlayedRow[] | null>(null);
+  const [rank, setRank] = useState<RankedStats | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     setScores(null);
     setPlayed(null);
+    setRank(null);
     setError(null);
     user.getIdToken().then((token) => {
       const auth = { Authorization: `Bearer ${token}` };
@@ -37,8 +49,24 @@ export default function MyScoresPage() {
         .then((res) => res.json())
         .then((data) => setPlayed((data.played as PlayedRow[]) ?? []))
         .catch(() => setPlayed([]));
+      fetch("/api/my-rank", { headers: auth })
+        .then((res) => res.json())
+        .then((data) => setRank((data.stats as RankedStats | null) ?? null))
+        .catch(() => setRank(null));
     });
   }, [user]);
+
+  // Aggregate single-player stats from the score history.
+  const stats = (() => {
+    if (!scores || scores.length === 0) return null;
+    const games = scores.length;
+    const best = Math.max(...scores.map((s) => s.score));
+    const avg = Math.round(scores.reduce((n, s) => n + s.score, 0) / games);
+    const correct = scores.reduce((n, s) => n + s.correct, 0);
+    const attempted = scores.reduce((n, s) => n + s.correct + s.wrong, 0);
+    const accuracy = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
+    return { games, best, avg, correct, accuracy };
+  })();
 
   return (
     <div className="flex flex-col flex-1 min-h-screen">
@@ -51,6 +79,26 @@ export default function MyScoresPage() {
             ← Today&apos;s board
           </Link>
         </header>
+
+        {/* Stat tiles */}
+        {user && stats && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-8">
+            <StatTile label="Games" value={String(stats.games)} />
+            <StatTile label="Best score" value={formatMoney(stats.best)} />
+            <StatTile label="Avg score" value={formatMoney(stats.avg)} />
+            <StatTile label="Accuracy" value={`${stats.accuracy}%`} />
+          </div>
+        )}
+        {user && rank && (
+          <div className="grid grid-cols-3 gap-2 mb-8">
+            <StatTile label="Ranked rating" value={String(rank.rating)} />
+            <StatTile label="Ranked games" value={String(rank.games)} />
+            <StatTile
+              label="Win rate"
+              value={rank.games > 0 ? `${Math.round((rank.wins / rank.games) * 100)}%` : "—"}
+            />
+          </div>
+        )}
 
         {loading ? (
           <p className="text-center text-blue-200/50 py-16">Loading…</p>
