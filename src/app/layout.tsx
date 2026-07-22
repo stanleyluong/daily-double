@@ -24,10 +24,30 @@ const bebas = Bebas_Neue({
   subsets: ["latin"],
 });
 
+// Canonical site origin. Defaults to the production domain; override per
+// environment (e.g. Amplify preview branches) with NEXT_PUBLIC_SITE_URL.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.playdailydouble.com";
+const DESCRIPTION =
+  "A fresh Jeopardy!-style trivia board every day. Jeopardy! and Double Jeopardy! rounds, Daily Doubles, 60 clues — written and judged by Claude.";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "Daily Double — AI-generated Jeopardy",
-  description:
-    "A fresh Jeopardy!-style trivia board every day. Jeopardy! and Double Jeopardy! rounds, Daily Doubles, 60 clues — written and judged by Claude.",
+  description: DESCRIPTION,
+  applicationName: "Daily Double",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "Daily Double",
+    title: "Daily Double — AI-generated Jeopardy",
+    description: DESCRIPTION,
+    url: SITE_URL,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Daily Double — AI-generated Jeopardy",
+    description: DESCRIPTION,
+  },
 };
 
 export default function RootLayout({

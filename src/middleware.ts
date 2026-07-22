@@ -1,15 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-// Canonicalize the bare apex to www: playdailydouble.com -> www.playdailydouble.com
-// (301, permanent). Scoped to that exact host so the old
-// dailydouble.stanleyluong.com domain and localhost are left completely alone,
-// and www itself never matches (no redirect loop).
-const APEX = "playdailydouble.com";
+// Canonical host. Both the bare apex and the old stanleyluong.com subdomain
+// 301 here, preserving path + query, so every old link (including live-game
+// URLs) lands on the same page at the new home. www itself never matches, so
+// there's no redirect loop, and localhost / other hosts are left alone.
 const WWW = "www.playdailydouble.com";
+const REDIRECT_HOSTS = new Set(["playdailydouble.com", "dailydouble.stanleyluong.com"]);
 
 export function middleware(req: NextRequest) {
   const host = (req.headers.get("host") ?? "").toLowerCase();
-  if (host === APEX) {
+  if (REDIRECT_HOSTS.has(host)) {
     const url = new URL(req.url);
     url.host = WWW;
     url.protocol = "https:";
