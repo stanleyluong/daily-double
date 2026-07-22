@@ -28,8 +28,10 @@ export default function LiveEntryPage() {
     setBusy("create");
     setError(null);
     try {
-      let boardKey = source === "unplayed" ? "unplayed" : "pool";
-      if (source === "custom") {
+      // Ranked always uses a fresh AI board (enforced server-side too); host
+      // board choices only apply to normal games.
+      let boardKey = mode === "ranked" || source !== "unplayed" ? "pool" : "unplayed";
+      if (mode === "normal" && source === "custom") {
         // Generate the custom board first, then start a game on it.
         const filled = cats.map((c) => c.trim()).filter(Boolean);
         if (filled.length === 0) {
@@ -127,9 +129,24 @@ export default function LiveEntryPage() {
                 : "Counts toward your rating. No pausing; needs 2+ players."}
             </p>
 
-            {/* Board source */}
-            <div>
-              <p className="text-xs uppercase tracking-wider text-blue-200/40 mb-2">Board</p>
+            {mode === "ranked" ? (
+              <div className="rounded-lg border border-gold/30 bg-board-deep/50 p-4">
+                <p className="text-xs uppercase tracking-wider text-gold/70 mb-2">Ranked rules · fixed</p>
+                <ul className="text-sm text-blue-100/90 space-y-1.5">
+                  <li>🎲 Fresh AI board — same for both players</li>
+                  <li>⏱️ 10 seconds to answer each clue</li>
+                  <li>⚡ Only the fastest correct answer scores</li>
+                  <li>🏆 Fastest correct answerer picks next</li>
+                </ul>
+                <p className="text-xs text-blue-200/50 mt-3">
+                  Every rated game uses these settings so the ladder stays fair.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Board source */}
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-blue-200/40 mb-2">Board</p>
               <div className="grid grid-cols-3 gap-2 p-1 bg-board-deep rounded-lg">
                 {(
                   [
@@ -256,6 +273,8 @@ export default function LiveEntryPage() {
                     : "Whoever's in last place chooses the next clue."}
               </p>
             </div>
+              </>
+            )}
 
             <button
               onClick={start}

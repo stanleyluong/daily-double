@@ -193,15 +193,26 @@ export async function createGame(
   scoringMode: ScoringMode = "all_correct",
   pickMode: PickMode = "winner"
 ): Promise<string> {
+  const ranked = mode === "ranked";
+  // Ranked games ignore host settings and use one fixed, fair configuration so
+  // every rated game is the same contest: a fresh AI board (never a custom or
+  // real episode either side could have prepped), a 10s timer, only the fastest
+  // correct answer scores, and the winner picks. Enforced here, server-side, so
+  // it can't be spoofed from the client.
+  const effBoardKey = ranked ? "pool" : boardKey;
+  const effAnswerMs = ranked ? ANSWER_MS : answerMs;
+  const effScoring: ScoringMode = ranked ? "winner_only" : scoringMode;
+  const effPick: PickMode = ranked ? "winner" : pickMode;
+
   // "unplayed" → a real historical episode the host hasn't played yet.
-  let resolvedKey = boardKey;
-  if (boardKey === "unplayed") resolvedKey = (await pickUnplayedHistorical(uid)) ?? "pool";
+  let resolvedKey = effBoardKey;
+  if (effBoardKey === "unplayed") resolvedKey = (await pickUnplayedHistorical(uid)) ?? "pool";
   const useSpecific = !!resolvedKey && resolvedKey !== "pool";
   const boardDate = useSpecific ? resolvedKey! : await pickBoardDate();
-  const window = ANSWER_MS_OPTIONS.includes(answerMs as (typeof ANSWER_MS_OPTIONS)[number]) ? answerMs! : ANSWER_MS;
-  const scoring: ScoringMode = scoringMode === "winner_only" ? "winner_only" : "all_correct";
+  const window = ANSWER_MS_OPTIONS.includes(effAnswerMs as (typeof ANSWER_MS_OPTIONS)[number]) ? effAnswerMs! : ANSWER_MS;
+  const scoring: ScoringMode = effScoring === "winner_only" ? "winner_only" : "all_correct";
   const picking: PickMode =
-    pickMode === "alternating" || pickMode === "loser" ? pickMode : "winner";
+    effPick === "alternating" || effPick === "loser" ? effPick : "winner";
   const player: LivePlayer = { uid, name: cleanName(name, "Player 1") };
 
   // Retry on the astronomically-unlikely code collision.
