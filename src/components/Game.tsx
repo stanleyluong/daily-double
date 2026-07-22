@@ -116,6 +116,9 @@ export default function Game({ date }: { date?: string }) {
   const [wagerInput, setWagerInput] = useState("");
   const [input, setInput] = useState("");
   const [verdict, setVerdict] = useState<ClueResult | null>(null);
+  // True when re-opening an already-answered clue to review it (read-only),
+  // rather than answering it fresh.
+  const [reviewing, setReviewing] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState(0);
   const [copied, setCopied] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -388,7 +391,16 @@ export default function Game({ date }: { date?: string }) {
   );
 
   const openClue = (clue: PublicClue, categoryTitle: string) => {
-    if (results[clue.id]) return;
+    const existing = results[clue.id];
+    if (existing) {
+      // Already answered — re-open read-only to review the question, your
+      // answer, and the correct answer.
+      setActive({ ...clue, categoryTitle });
+      setVerdict(existing);
+      setReviewing(true);
+      setPhase("result");
+      return;
+    }
     if (!user) {
       setAuthModalMessage("Sign in to open clues and play today's board.");
       setShowAuthModal(true);
@@ -399,6 +411,7 @@ export default function Game({ date }: { date?: string }) {
     setInput("");
     setWagerInput("");
     setVerdict(null);
+    setReviewing(false);
     setPhase(clue.dailyDouble ? "wager" : "answering");
   };
 
@@ -445,6 +458,7 @@ export default function Game({ date }: { date?: string }) {
   const closeClue = useCallback(() => {
     setActive(null);
     setVerdict(null);
+    setReviewing(false);
   }, []);
 
   // After a ruling, Enter (or Escape) returns to the board without reaching
@@ -765,22 +779,31 @@ export default function Game({ date }: { date?: string }) {
                           <button
                             key={clue.id}
                             onClick={() => openClue(clue, cat.title)}
-                            disabled={!!result}
+                            aria-label={
+                              result
+                                ? `$${clue.value}, answered ${result.outcome} — answer: ${result.correctAnswer}. Review.`
+                                : `$${clue.value}`
+                            }
                             className={`rounded-sm min-h-[52px] flex items-center justify-center transition-colors ${
-                              result ? "bg-board/30 cursor-default" : "bg-board active:bg-board/70 cursor-pointer"
+                              result ? "bg-board/30 active:bg-board/50 cursor-pointer" : "bg-board active:bg-board/70 cursor-pointer"
                             }`}
                           >
                             {result ? (
-                              <span
-                                className={`text-lg ${
-                                  result.outcome === "correct"
-                                    ? "text-green-400"
-                                    : result.outcome === "wrong"
-                                      ? "text-red-400"
-                                      : "text-blue-200/40"
-                                }`}
-                              >
-                                {result.outcome === "correct" ? "✓" : result.outcome === "wrong" ? "✗" : "–"}
+                              <span className="flex flex-col items-center justify-center gap-0.5 px-0.5 w-full">
+                                <span
+                                  className={`text-sm leading-none ${
+                                    result.outcome === "correct"
+                                      ? "text-green-400"
+                                      : result.outcome === "wrong"
+                                        ? "text-red-400"
+                                        : "text-blue-200/40"
+                                  }`}
+                                >
+                                  {result.outcome === "correct" ? "✓" : result.outcome === "wrong" ? "✗" : "–"}
+                                </span>
+                                <span className="text-[9px] leading-tight text-blue-100/80 text-center line-clamp-2 break-words">
+                                  {result.correctAnswer}
+                                </span>
                               </span>
                             ) : (
                               <span className="font-display text-sm text-gold tracking-wide">
@@ -830,26 +853,34 @@ export default function Game({ date }: { date?: string }) {
                       }}
                       onClick={() => openClue(clue, cat.title)}
                       onFocus={() => setFocusedCell({ row, col })}
-                      disabled={!!result}
                       tabIndex={isFocused ? 0 : -1}
-                      aria-label={`${cat.title}, $${clue.value}${result ? `, answered — ${result.outcome}` : ""}`}
+                      aria-label={
+                        result
+                          ? `${cat.title}, $${clue.value}, answered ${result.outcome} — answer: ${result.correctAnswer}. Review.`
+                          : `${cat.title}, $${clue.value}`
+                      }
                       className={`rounded-sm min-h-[64px] md:min-h-[76px] flex items-center justify-center transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold focus-visible:outline-offset-2 ${
                         result
-                          ? "bg-board/30 cursor-default"
+                          ? "bg-board/30 hover:bg-board/50 cursor-pointer"
                           : "bg-board hover:bg-board-deep cursor-pointer"
                       }`}
                     >
                       {result ? (
-                        <span
-                          className={`text-xl ${
-                            result.outcome === "correct"
-                              ? "text-green-400"
-                              : result.outcome === "wrong"
-                                ? "text-red-400"
-                                : "text-blue-200/40"
-                          }`}
-                        >
-                          {result.outcome === "correct" ? "✓" : result.outcome === "wrong" ? "✗" : "–"}
+                        <span className="flex flex-col items-center justify-center gap-0.5 px-1 py-1 w-full">
+                          <span
+                            className={`text-base leading-none ${
+                              result.outcome === "correct"
+                                ? "text-green-400"
+                                : result.outcome === "wrong"
+                                  ? "text-red-400"
+                                  : "text-blue-200/40"
+                            }`}
+                          >
+                            {result.outcome === "correct" ? "✓" : result.outcome === "wrong" ? "✗" : "–"}
+                          </span>
+                          <span className="text-[11px] leading-tight text-blue-100/80 text-center line-clamp-2 break-words">
+                            {result.correctAnswer}
+                          </span>
                         </span>
                       ) : (
                         <span className="font-display text-2xl md:text-3xl text-gold tracking-wide">
@@ -1109,11 +1140,13 @@ export default function Game({ date }: { date?: string }) {
                 {phase === "result" && verdict && (
                   <div
                     className={`-mx-6 md:-mx-10 -mt-2 px-6 md:px-10 pt-2 rounded-t-lg ${
-                      verdict.outcome === "correct"
-                        ? "animate-flash-correct"
-                        : verdict.outcome === "wrong"
-                          ? "animate-flash-wrong"
-                          : ""
+                      reviewing
+                        ? ""
+                        : verdict.outcome === "correct"
+                          ? "animate-flash-correct"
+                          : verdict.outcome === "wrong"
+                            ? "animate-flash-wrong"
+                            : ""
                     }`}
                   >
                     <p
@@ -1126,13 +1159,27 @@ export default function Game({ date }: { date?: string }) {
                       }`}
                     >
                       {verdict.outcome === "correct"
-                        ? `Correct! +$${verdict.pointValue.toLocaleString()}`
+                        ? `Correct!${reviewing ? "" : ` +$${verdict.pointValue.toLocaleString()}`}`
                         : verdict.outcome === "wrong"
-                          ? `Incorrect. −$${verdict.pointValue.toLocaleString()}`
-                          : "Passed"}
+                          ? `Incorrect.${reviewing ? "" : ` −$${verdict.pointValue.toLocaleString()}`}`
+                          : reviewing
+                            ? "No answer"
+                            : "Passed"}
                     </p>
                     <p className="text-lg mb-1">
-                      <span className="text-blue-200/60">Answer: </span>
+                      <span className="text-blue-200/60">Your answer: </span>
+                      {verdict.playerAnswer ? (
+                        <span
+                          className={verdict.outcome === "correct" ? "text-green-300" : "text-red-300"}
+                        >
+                          {verdict.playerAnswer}
+                        </span>
+                      ) : (
+                        <span className="text-blue-200/40">— (not answered)</span>
+                      )}
+                    </p>
+                    <p className="text-lg mb-1">
+                      <span className="text-blue-200/60">Correct answer: </span>
                       <span className="text-gold">{verdict.correctAnswer}</span>
                     </p>
                     {verdict.comment && <p className="text-blue-200/80 italic">{verdict.comment}</p>}
@@ -1141,7 +1188,7 @@ export default function Game({ date }: { date?: string }) {
                         onClick={closeClue}
                         className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
                       >
-                        {active.isFinal ? "See final results" : "Back to board"}{" "}
+                        {reviewing ? "Close" : active.isFinal ? "See final results" : "Back to board"}{" "}
                         <span className="opacity-60">⏎</span>
                       </button>
                     </div>
