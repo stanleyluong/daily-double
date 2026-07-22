@@ -119,6 +119,10 @@ export default function Game({ date }: { date?: string }) {
   // True when re-opening an already-answered clue to review it (read-only),
   // rather than answering it fresh.
   const [reviewing, setReviewing] = useState(false);
+  // Double-Escape "No idea — reveal" shortcut: first Esc arms this (shows a
+  // hint), a second Esc within the window reveals. Ref holds the disarm timer.
+  const [revealArmed, setRevealArmed] = useState(false);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loadingMsg, setLoadingMsg] = useState(0);
   const [copied, setCopied] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -389,6 +393,38 @@ export default function Game({ date }: { date?: string }) {
     },
     [board, active, user, input, recordResult, handleBoardChanged, showToast]
   );
+
+  // Latest submitAnswer, so the double-Escape listener below doesn't need to
+  // re-subscribe on every keystroke (which would break the arm timer).
+  const submitAnswerRef = useRef(submitAnswer);
+  submitAnswerRef.current = submitAnswer;
+
+  // Double-Escape while answering fires "No idea — reveal" — pass without the
+  // mouse. First Esc arms (shows a hint on the button); a second Esc within
+  // 1.5s reveals. Typing doesn't disarm the effect (it stays subscribed while
+  // the phase is "answering"), so the timer runs its course.
+  useEffect(() => {
+    if (phase !== "answering") {
+      setRevealArmed(false);
+      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+      return;
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setRevealArmed((armed) => {
+        if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+        if (armed) {
+          submitAnswerRef.current(true);
+          return false;
+        }
+        revealTimerRef.current = setTimeout(() => setRevealArmed(false), 1500);
+        return true;
+      });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phase]);
 
   const openClue = (clue: PublicClue, categoryTitle: string) => {
     const existing = results[clue.id];
@@ -1100,9 +1136,18 @@ export default function Game({ date }: { date?: string }) {
                         type="button"
                         onClick={() => submitAnswer(true)}
                         disabled={phase === "judging"}
-                        className="text-blue-200/70 hover:text-blue-100 px-4 py-2 disabled:opacity-50"
+                        className={`px-4 py-2 disabled:opacity-50 transition-colors ${
+                          revealArmed ? "text-gold" : "text-blue-200/70 hover:text-blue-100"
+                        }`}
                       >
-                        No idea — reveal
+                        {revealArmed ? (
+                          "Press Esc again to reveal"
+                        ) : (
+                          <>
+                            No idea — reveal
+                            <span className="opacity-50 text-xs ml-1.5">Esc Esc</span>
+                          </>
+                        )}
                       </button>
                       <button
                         type="submit"
