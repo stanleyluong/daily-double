@@ -9,9 +9,11 @@ export default function Home() {
           <h1 className="font-display text-5xl md:text-7xl tracking-wider text-gold">
             Daily Double
           </h1>
-          <p className="text-blue-200/70 mt-2 max-w-xl mx-auto">
-            A new Jeopardy!-style board every day — two rounds, 60 clues, Daily Doubles and all,
-            written and judged by Claude. Type your answer; a lenient AI host rules on it.
+          <p className="text-blue-200/70 mt-2 max-w-2xl mx-auto">
+            <strong className="text-blue-100">Daily Double</strong> is a free, AI-generated
+            Jeopardy!-style trivia game. Play a fresh board every day — two rounds, 60 clues, Daily
+            Doubles and all, written and judged by Claude. Sign in with Google to save your scores,
+            track your stats, and play live games with friends.
           </p>
           <div className="mt-3 flex items-center justify-center gap-x-4 gap-y-1 text-sm flex-wrap">
             <Link href="/play" className="text-gold hover:text-gold-soft underline font-semibold">
