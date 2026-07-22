@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { useDm } from "@/components/DmProvider";
 import { useFriends } from "@/components/FriendsProvider";
 import AuthModal from "@/components/AuthModal";
 import { acceptFriend, addFriend, declineFriend } from "@/lib/friendsClient";
@@ -10,6 +11,7 @@ import { acceptFriend, addFriend, declineFriend } from "@/lib/friendsClient";
 export default function FriendsPage() {
   const { user, loading } = useAuth();
   const { data, refresh } = useFriends();
+  const { unread: dmUnread, open: openDm } = useDm();
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -135,7 +137,17 @@ export default function FriendsPage() {
                         title={f.online ? "Online" : "Offline"}
                       />
                       <span className="flex-1 text-blue-100">{f.name}</span>
-                      <span className="text-xs text-blue-200/40">{f.online ? "online" : "offline"}</span>
+                      {(dmUnread[f.uid] ?? 0) > 0 && (
+                        <span className="min-w-[1.2rem] h-5 px-1 grid place-items-center rounded-full bg-gold text-board-deep text-xs font-bold">
+                          {dmUnread[f.uid]}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => openDm(f.uid, f.name)}
+                        className="font-display tracking-wide border border-gold/40 text-gold px-3 py-1 rounded text-sm hover:bg-board"
+                      >
+                        Message
+                      </button>
                     </li>
                   ))}
                 </ul>

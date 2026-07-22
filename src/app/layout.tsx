@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { Bebas_Neue, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import AccountBar from "@/components/AccountBar";
 import AuthProvider from "@/components/AuthProvider";
+import DmProvider from "@/components/DmProvider";
 import FriendsProvider from "@/components/FriendsProvider";
+import FriendsRail from "@/components/FriendsRail";
 import InviteBanner from "@/components/InviteBanner";
+import NavBar from "@/components/NavBar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -45,9 +47,14 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <AuthProvider>
           <FriendsProvider>
-            <AccountBar />
-            {children}
-            <InviteBanner />
+            <DmProvider>
+              <NavBar />
+              <div className="flex flex-1 min-h-0">
+                <main className="flex-1 min-w-0">{children}</main>
+                <FriendsRail />
+              </div>
+              <InviteBanner />
+            </DmProvider>
           </FriendsProvider>
         </AuthProvider>
       </body>

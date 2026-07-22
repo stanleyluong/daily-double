@@ -13,13 +13,15 @@ import {
   livePause,
   livePick,
   liveReportDrop,
+  liveJoin,
   liveResolve,
   liveStart,
   liveStartFinal,
   liveSubmit,
+  liveChat,
 } from "@/lib/liveActions";
 import { formatMoney } from "@/lib/format";
-import { DISCONNECT_MS, HEARTBEAT_MS, type LiveReveal } from "@/lib/liveTypes";
+import { DISCONNECT_MS, HEARTBEAT_MS, type LiveChatMessage, type LiveReveal } from "@/lib/liveTypes";
 import { isMuted, playSound, setMuted, type SoundName } from "@/lib/sounds";
 import { useFriends } from "@/components/FriendsProvider";
 import { inviteFriend } from "@/lib/friendsClient";
@@ -29,9 +31,35 @@ import { inviteFriend } from "@/lib/friendsClient";
 // server-time offset estimate is the future hardening).
 type SubPhase = "countdown" | "answering" | "timeup";
 
+// Terse server error codes → messages worth showing a human. Codes not listed
+// here (and the benign race codes handled in `run`) fall back to a generic
+// message rather than leaking an internal code into a toast.
+const FRIENDLY_ERROR: Record<string, string> = {
+  paused: "The game is paused.",
+  "not-a-player": "You're not in this game.",
+  "no-game": "This game no longer exists.",
+  "game-full": "This game is full.",
+  "already-started": "This game has already started.",
+};
+
 export default function LiveGameView({ gameId }: { gameId: string }) {
   const { user } = useAuth();
-  const { game, error, loading } = useLiveGame(gameId);
+  // Auto-join on arrival (idempotent for existing members) BEFORE subscribing,
+  // so someone who followed an invite/link becomes a game member and the
+  // Firestore listener isn't immediately permission-denied.
+  const [joined, setJoined] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const joinTriedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    if (joinTriedRef.current === gameId) return;
+    joinTriedRef.current = gameId;
+    liveJoin(user, gameId, user.displayName ?? "")
+      .then(() => setJoined(true))
+      .catch((e) => setJoinError(e instanceof Error ? e.message : "Couldn't join this game."));
+  }, [user, gameId]);
+
+  const { game, error, loading } = useLiveGame(gameId, joined);
   const [board, setBoard] = useState<PublicBoard | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [input, setInput] = useState("");
@@ -40,6 +68,7 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
   const [toast, setToast] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [muted, setMutedState] = useState(() => (typeof window !== "undefined" ? isMuted() : false));
+  const [viewBoard, setViewBoard] = useState(false); // non-picker chose to watch the board
   const resolvedFiredFor = useRef<string | null>(null);
   const droppedFlaggedRef = useRef<Set<string>>(new Set());
 
@@ -51,6 +80,7 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
     setSeenClueId(game?.currentClueId ?? null);
     setInput("");
     setSubmittedClue(null);
+    setViewBoard(false); // start each waiting period on the last results
   }
 
   // Keep the most recent reveal so non-pickers can keep viewing the last
@@ -96,7 +126,11 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
       try {
         await fn();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Something went wrong.");
+        const code = e instanceof Error ? e.message : "";
+        // Realtime races: you acted a beat after the game moved on. The live
+        // snapshot already shows the right screen, so don't nag with a toast.
+        if (code === "bad-phase" || code === "too-late" || code === "resolving") return;
+        showToast(FRIENDLY_ERROR[code] ?? "Something went wrong.");
       }
     },
     [showToast]
@@ -215,8 +249,29 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
     }
   }, [game, now, uid, muted, sfx]);
 
-  if (loading) {
-    return <Centered>Loading game…</Centered>;
+  if (joinError) {
+    const friendly =
+      joinError === "already-started"
+        ? "That game has already started."
+        : joinError === "game-full"
+          ? "That game is full (3 players)."
+          : joinError === "no-game"
+            ? "That game doesn't exist."
+            : joinError;
+    return (
+      <Centered>
+        <p className="text-red-300 mb-4">{friendly}</p>
+        <Link href="/live" className="text-gold underline">
+          Back to Play with Friends
+        </Link>
+      </Centered>
+    );
+  }
+  if (!user) {
+    return <Centered>Sign in to join this game.</Centered>;
+  }
+  if (!joined || loading) {
+    return <Centered>Joining game…</Centered>;
   }
   if (error || !game) {
     return (
@@ -324,6 +379,26 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
               )}
             </div>
 
+            {/* House rules for this game */}
+            <div className="flex flex-wrap justify-center gap-2 mb-6 text-[11px]">
+              {[
+                `${game.answerMs / 1000}s to answer`,
+                game.scoringMode === "winner_only" ? "Only fastest scores" : "All correct score",
+                game.pickMode === "alternating"
+                  ? "Alternating picks"
+                  : game.pickMode === "loser"
+                    ? "Loser picks"
+                    : "Winner picks",
+              ].map((r) => (
+                <span
+                  key={r}
+                  className="px-2.5 py-1 rounded-full border border-[color:var(--hairline)] text-blue-200/70"
+                >
+                  {r}
+                </span>
+              ))}
+            </div>
+
             {isHost ? (
               <button
                 onClick={() => run(() => liveStart(user!, game.id))}
@@ -350,17 +425,30 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
               </p>
               <LiveBoard game={game} round={round} canPick onPick={(id) => run(() => livePick(user!, game.id, id))} />
             </div>
-          ) : lastReveal ? (
+          ) : lastReveal && !viewBoard ? (
             <div>
-              <p className="text-center mb-4 text-blue-200/70">
-                Waiting for {nameFor(game.pickerUid ?? "")} to pick — here&apos;s the last one:
+              <p className="text-center mb-3 text-blue-200/70">
+                Waiting for {nameFor(game.pickerUid ?? "")}{" "}to pick — here&apos;s the last one:
               </p>
+              <div className="text-center mb-4">
+                <button
+                  onClick={() => setViewBoard(true)}
+                  className="text-sm font-display tracking-wide border border-gold/40 text-gold hover:bg-board px-4 py-1.5 rounded"
+                >
+                  See the board →
+                </button>
+              </div>
               <Reveal reveal={lastReveal} players={game.players} uid={uid} nameFor={nameFor} />
             </div>
           ) : (
             <div>
               <p className="text-center mb-4 text-blue-200/80">
-                Waiting for {nameFor(game.pickerUid ?? "")} to pick…
+                Waiting for {nameFor(game.pickerUid ?? "")}{" "}to pick…
+                {lastReveal && (
+                  <button onClick={() => setViewBoard(false)} className="ml-2 text-gold/70 hover:text-gold underline">
+                    back to results
+                  </button>
+                )}
               </p>
               <LiveBoard game={game} round={round} canPick={false} onPick={() => {}} />
             </div>
@@ -444,11 +532,111 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
           {toast}
         </div>
       )}
+
+      {isMember && user && (
+        <GameChat chat={game.chat} uid={uid} onSend={(text) => liveChat(user, game.id, text)} />
+      )}
     </div>
   );
 }
 
 /* ---------- sub-components ---------- */
+
+// Collapsible in-game group chat, pinned bottom-right (clear of the friends
+// rail on desktop). Reads the live `chat` array off the game doc; sending goes
+// through the API. Unseen-message dot while collapsed.
+function GameChat({
+  chat,
+  uid,
+  onSend,
+}: {
+  chat: LiveChatMessage[];
+  uid: string | null;
+  onSend: (text: string) => Promise<unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [seen, setSeen] = useState(0);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to the newest message while open.
+  useEffect(() => {
+    if (open && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [chat.length, open]);
+
+  // Track how many messages have been seen so a collapsed panel can show a dot.
+  useEffect(() => {
+    if (open) setSeen(chat.length);
+  }, [open, chat.length]);
+  const unseen = !open && chat.length > seen;
+
+  const send = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const t = text.trim();
+    if (!t) return;
+    setText("");
+    await onSend(t).catch(() => {});
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="fixed bottom-4 right-4 lg:right-[19rem] z-40 flex items-center gap-2 rounded-full bg-shell-raised border border-[color:var(--hairline-strong)] text-gold px-4 py-2 font-display tracking-wide shadow-xl hover:bg-board-deep"
+      >
+        <span aria-hidden>💬</span> Chat
+        {unseen && <span className="h-2 w-2 rounded-full bg-online" />}
+      </button>
+    );
+  }
+
+  return (
+    <div className="fixed bottom-4 right-4 lg:right-[19rem] z-40 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-[color:var(--hairline)] bg-shell shadow-2xl flex flex-col">
+      <div className="flex items-center justify-between px-3 h-10 border-b border-[color:var(--hairline)]">
+        <span className="font-display tracking-[0.2em] text-gold text-sm">GAME CHAT</span>
+        <button onClick={() => setOpen(false)} className="text-blue-200/50 hover:text-blue-100 text-lg leading-none">
+          ✕
+        </button>
+      </div>
+      <div ref={logRef} className="h-64 overflow-y-auto px-3 py-2 flex flex-col gap-1.5">
+        {chat.length === 0 && (
+          <p className="text-xs text-blue-200/40 m-auto">No messages yet — say hi 👋</p>
+        )}
+        {chat.map((m) => {
+          const mine = m.uid === uid;
+          return (
+            <div key={m.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+              {!mine && <span className="text-[10px] text-blue-200/40 px-1">{m.name}</span>}
+              <span
+                className={`inline-block max-w-[85%] rounded-lg px-2.5 py-1.5 text-sm break-words ${
+                  mine ? "bg-gold/90 text-board-deep" : "bg-shell-panel text-blue-100"
+                }`}
+              >
+                {m.text}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <form onSubmit={send} className="flex gap-1.5 p-2 border-t border-[color:var(--hairline)]">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          maxLength={300}
+          placeholder="Message…"
+          className="flex-1 min-w-0 rounded-sm bg-shell-panel border border-[color:var(--hairline)] focus:border-gold outline-none px-2.5 py-1.5 text-sm placeholder:text-blue-200/35"
+        />
+        <button
+          type="submit"
+          disabled={!text.trim()}
+          className="px-3 rounded-sm bg-gold hover:bg-gold-soft text-board-deep font-display tracking-wide text-sm disabled:opacity-50"
+        >
+          Send
+        </button>
+      </form>
+    </div>
+  );
+}
 
 // Invite online friends who aren't already in the game, straight from the lobby.
 function InviteFriends({ gameCode, playerUids }: { gameCode: string; playerUids: string[] }) {

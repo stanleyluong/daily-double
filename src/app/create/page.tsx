@@ -5,19 +5,36 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
+import BoardLoading from "@/components/BoardLoading";
 
-const SUGGESTIONS = ["Potent Potables", "World Capitals", "Rhyme Time", "80s Movies", "The Human Body", "Famous Cats"];
+const SUGGESTIONS = [
+  "Potent Potables",
+  "World Capitals",
+  "Rhyme Time",
+  "80s Movies",
+  "The Human Body",
+  "Famous Cats",
+  "Ancient History",
+  "Broadway Musicals",
+  "Elements & Alloys",
+  "Sports Legends",
+  "Literary Villains",
+  "Space & Beyond",
+];
 
 export default function CreateBoardPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [cats, setCats] = useState<string[]>(["", "", "", "", "", ""]);
+  const [rounds, setRounds] = useState<1 | 2>(1);
+  const [cats, setCats] = useState<string[]>(Array(12).fill(""));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAuth, setShowAuth] = useState(false);
 
+  const count = rounds === 2 ? 12 : 6;
   const setCat = (i: number, v: string) => setCats((c) => c.map((x, j) => (j === i ? v : x)));
-  const filled = cats.map((c) => c.trim()).filter(Boolean);
+  const active = cats.slice(0, count);
+  const filled = active.map((c) => c.trim()).filter(Boolean);
 
   const generate = async () => {
     if (!user) return setShowAuth(true);
@@ -29,7 +46,7 @@ export default function CreateBoardPage() {
       const res = await fetch("/api/custom", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ categories: cats }),
+        body: JSON.stringify({ categories: active, rounds }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Couldn't generate the board.");
@@ -47,7 +64,7 @@ export default function CreateBoardPage() {
         <header className="text-center mb-8">
           <h1 className="font-display text-4xl md:text-5xl tracking-wider text-gold">Build Your Board</h1>
           <p className="text-blue-200/70 mt-2">
-            Name up to 6 categories and Claude writes a full round of clues (plus a Final Jeopardy) on the spot.
+            Name your categories and Claude writes the clues (plus a Final Jeopardy!) on the spot.
           </p>
           <Link href="/play" className="inline-block mt-3 text-gold/80 hover:text-gold underline">
             ← Choose a different board
@@ -55,26 +72,64 @@ export default function CreateBoardPage() {
         </header>
 
         {busy ? (
-          <div className="text-center py-16">
-            <div className="inline-block h-10 w-10 border-2 border-gold border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-blue-100 font-display text-xl tracking-wide">Writing your board…</p>
-            <p className="text-blue-200/50 text-sm mt-2">Claude is composing 30 clues and a Final. ~20 seconds.</p>
-          </div>
+          <BoardLoading
+            title="Writing your board…"
+            detail={
+              rounds === 2
+                ? "Claude is composing two rounds, 60 clues, and a Final. ~40 seconds."
+                : "Claude is composing 30 clues and a Final. ~20 seconds."
+            }
+          />
         ) : (
           <>
+            {/* Round-count selector */}
+            <div className="grid grid-cols-2 gap-2 mb-6">
+              {([1, 2] as const).map((r) => {
+                const on = rounds === r;
+                return (
+                  <button
+                    key={r}
+                    onClick={() => setRounds(r)}
+                    className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                      on
+                        ? "border-gold bg-board-deep/60"
+                        : "border-blue-300/20 bg-board/40 hover:border-blue-300/40"
+                    }`}
+                  >
+                    <p className={`font-display text-lg tracking-wide ${on ? "text-gold" : "text-blue-100"}`}>
+                      {r === 1 ? "Single round" : "Two rounds"}
+                    </p>
+                    <p className="text-xs text-blue-200/50 mt-0.5">
+                      {r === 1 ? "6 categories · Jeopardy!" : "12 categories · + Double Jeopardy!"}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="space-y-3 mb-6">
-              {cats.map((c, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <span className="font-display text-gold/50 w-6 text-right">{i + 1}</span>
-                  <input
-                    value={c}
-                    onChange={(e) => setCat(i, e.target.value)}
-                    maxLength={60}
-                    placeholder={SUGGESTIONS[i]}
-                    className="flex-1 rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2.5 placeholder:text-blue-200/30"
-                  />
-                </div>
-              ))}
+              {Array.from({ length: count }).map((_, i) => {
+                const isRoundBreak = rounds === 2 && (i === 0 || i === 6);
+                return (
+                  <div key={i}>
+                    {isRoundBreak && (
+                      <p className="font-display tracking-[0.2em] text-gold/60 text-xs mt-2 mb-2">
+                        {i === 0 ? "JEOPARDY! ROUND" : "DOUBLE JEOPARDY! ROUND"}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-3">
+                      <span className="font-display text-gold/50 w-6 text-right">{(i % 6) + 1}</span>
+                      <input
+                        value={cats[i]}
+                        onChange={(e) => setCat(i, e.target.value)}
+                        maxLength={60}
+                        placeholder={SUGGESTIONS[i]}
+                        className="flex-1 rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2.5 placeholder:text-blue-200/30"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <button

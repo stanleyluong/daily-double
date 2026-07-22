@@ -15,6 +15,8 @@ export default function LiveEntryPage() {
   const [mode, setMode] = useState<"normal" | "ranked">("normal");
   const [source, setSource] = useState<"pool" | "unplayed" | "custom">("pool");
   const [answerMs, setAnswerMs] = useState(10000);
+  const [scoringMode, setScoringMode] = useState<"all_correct" | "winner_only">("all_correct");
+  const [pickMode, setPickMode] = useState<"winner" | "alternating" | "loser">("winner");
   const [cats, setCats] = useState<string[]>(["", "", "", "", "", ""]);
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export default function LiveEntryPage() {
         if (!res.ok) throw new Error(data.error ?? "Couldn't generate the board.");
         boardKey = String(data.key);
       }
-      const { code } = await liveCreate(user, name, mode, boardKey, answerMs);
+      const { code } = await liveCreate(user, name, mode, boardKey, answerMs, scoringMode, pickMode);
       router.push(`/live/${code}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't start a game.");
@@ -194,6 +196,65 @@ export default function LiveEntryPage() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Scoring rule */}
+            <div>
+              <p className="text-xs uppercase tracking-wider text-blue-200/40 mb-2">Scoring</p>
+              <div className="grid grid-cols-2 gap-2 p-1 bg-board-deep rounded-lg">
+                {(
+                  [
+                    ["all_correct", "All correct score"],
+                    ["winner_only", "Only fastest scores"],
+                  ] as const
+                ).map(([s, label]) => (
+                  <button
+                    key={s}
+                    onClick={() => setScoringMode(s)}
+                    className={`rounded-md py-2 text-sm font-display tracking-wide transition-colors ${
+                      scoringMode === s ? "bg-gold text-board-deep" : "text-blue-200/70 hover:text-blue-100"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-blue-200/50 mt-2">
+                {scoringMode === "all_correct"
+                  ? "Everyone who answers correctly earns the clue's value."
+                  : "Only the fastest correct answer earns money — real buzzer rules."}
+              </p>
+            </div>
+
+            {/* Pick order */}
+            <div>
+              <p className="text-xs uppercase tracking-wider text-blue-200/40 mb-2">Who picks next</p>
+              <div className="grid grid-cols-3 gap-2 p-1 bg-board-deep rounded-lg">
+                {(
+                  [
+                    ["winner", "Winner picks"],
+                    ["alternating", "Alternating"],
+                    ["loser", "Loser picks"],
+                  ] as const
+                ).map(([s, label]) => (
+                  <button
+                    key={s}
+                    onClick={() => setPickMode(s)}
+                    className={`rounded-md py-2 text-sm font-display tracking-wide transition-colors ${
+                      pickMode === s ? "bg-gold text-board-deep" : "text-blue-200/70 hover:text-blue-100"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-blue-200/50 mt-2">
+                {pickMode === "winner"
+                  ? "The fastest correct answerer chooses the next clue."
+                  : pickMode === "alternating"
+                    ? "The pick rotates through players in turn, no matter who's right."
+                    : "Whoever's in last place chooses the next clue."}
+              </p>
             </div>
 
             <button

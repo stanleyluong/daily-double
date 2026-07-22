@@ -547,52 +547,90 @@ export async function generateFreshBoard(): Promise<Board> {
   return generateBoard(todayKey());
 }
 
-// A user-defined board: the player supplies up to 6 category titles and we
-// write the clues. Deliberately a SINGLE round + Final Jeopardy (not two
-// rounds) so generation is one parallel wave of clue calls plus one final —
-// fast enough to run inside a request without hitting Amplify's SSR timeout
-// (unlike the full daily board, which is pre-generated off the request path).
-export async function generateCustomBoard(titles: string[]): Promise<Board> {
-  const clean = titles.map((t) => (t ?? "").replace(/\s+/g, " ").trim().slice(0, 60)).filter(Boolean).slice(0, 6);
-  if (clean.length === 0) throw new Error("Enter at least one category.");
-
-  const briefs: CategoryBrief[] = clean.map((t) => ({ title: t, theme: t }));
-  const clueSets = await Promise.all(briefs.map((b) => generateClues(b, false, [])));
+// Builds one custom round from up to 6 category titles. Values scale with the
+// round (Jeopardy! 200–1000, Double Jeopardy! 400–2000) and clue ids are
+// prefixed by the round index, matching the daily-board id scheme.
+async function buildCustomRound(
+  titles: string[],
+  roundIndex: number,
+  avoidAnswers: string[]
+): Promise<{ round: Round; briefs: CategoryBrief[] }> {
+  const harder = roundIndex > 0;
+  const multiplier = roundIndex + 1; // round 0 → 200s, round 1 → 400s
+  const briefs: CategoryBrief[] = titles.map((t) => ({ title: t, theme: t }));
+  const clueSets = await Promise.all(briefs.map((b) => generateClues(b, harder, avoidAnswers)));
 
   const categories: Category[] = briefs.map((brief, c) => ({
     title: brief.title,
     clues: clueSets[c].map((raw, r) => ({
-      id: `0-${c}-${r}`,
-      value: (r + 1) * 200,
+      id: `${roundIndex}-${c}-${r}`,
+      value: (r + 1) * 200 * multiplier,
       clue: raw.clue,
       answer: raw.answer,
       acceptable: raw.acceptable ?? [],
       dailyDouble: false,
     })),
   }));
-  placeDailyDoubles(categories, 1);
+  // Real Jeopardy! has one Daily Double in round 1 and two in round 2.
+  placeDailyDoubles(categories, roundIndex === 0 ? 1 : 2);
 
-  const rounds: Round[] = [{ name: "Jeopardy!", categories }];
+  return { round: { name: harder ? "Double Jeopardy!" : "Jeopardy!", categories }, briefs };
+}
+
+// A user-defined board: the player supplies category titles and we write the
+// clues. `roundCount` is 1 (6 categories, one round) or 2 (up to 12 categories,
+// Jeopardy! + Double Jeopardy!). Kept to at most two parallel waves of clue
+// calls plus one final so it still fits inside a request without hitting
+// Amplify's SSR timeout (unlike the daily board, pre-generated off-request).
+export async function generateCustomBoard(titles: string[], roundCount: 1 | 2 = 1): Promise<Board> {
+  const clean = titles
+    .map((t) => (t ?? "").replace(/\s+/g, " ").trim().slice(0, 60))
+    .filter(Boolean)
+    .slice(0, roundCount === 2 ? 12 : 6);
+  if (clean.length === 0) throw new Error("Enter at least one category.");
+
+  // Split the titles across rounds (first 6 → Jeopardy!, next up to 6 → Double).
+  const round1Titles = clean.slice(0, 6);
+  const round2Titles = roundCount === 2 ? clean.slice(6, 12) : [];
+
+  const first = await buildCustomRound(round1Titles, 0, []);
+  const rounds: Round[] = [first.round];
+  const allBriefs: CategoryBrief[] = [...first.briefs];
+  const harderByRound = [false];
   const briefMap = new Map<string, CategoryBrief>();
-  briefs.forEach((b, c) => briefMap.set(`0-${c}`, b));
-  await dedupeBoardAnswers(rounds, briefMap, [false]);
+  first.briefs.forEach((b, c) => briefMap.set(`0-${c}`, b));
+
+  if (round2Titles.length > 0) {
+    const round1Answers = first.round.categories.flatMap((c) => c.clues.map((cl) => cl.answer));
+    const second = await buildCustomRound(round2Titles, 1, round1Answers);
+    rounds.push(second.round);
+    allBriefs.push(...second.briefs);
+    harderByRound.push(true);
+    second.briefs.forEach((b, c) => briefMap.set(`1-${c}`, b));
+  }
+
+  await dedupeBoardAnswers(rounds, briefMap, harderByRound);
 
   const allAnswers = rounds.flatMap((r) => r.categories.flatMap((c) => c.clues.map((cl) => cl.answer)));
-  const final = await generateFinalJeopardy(todayKey(), briefs, allAnswers);
+  const final = await generateFinalJeopardy(todayKey(), allBriefs, allAnswers);
 
   return { boardId: randomUUID(), date: todayKey(), rounds, final };
 }
 
 // Generates + persists a custom board, returning its play key (`custom-{id}`)
 // which the whole play/judge flow already understands via getBoardForDate.
-export async function createCustomBoard(uid: string, titles: string[]): Promise<string> {
-  const board = await generateCustomBoard(titles);
+export async function createCustomBoard(
+  uid: string,
+  titles: string[],
+  roundCount: 1 | 2 = 1
+): Promise<string> {
+  const board = await generateCustomBoard(titles, roundCount);
   const id = randomUUID().replace(/-/g, "").slice(0, 12);
   await db().collection(CUSTOM_BOARDS).doc(id).set({
     ownerUid: uid,
     rounds: board.rounds,
     final: board.final ?? null,
-    categoryTitles: board.rounds[0].categories.map((c) => c.title),
+    categoryTitles: board.rounds.flatMap((r) => r.categories.map((c) => c.title)),
     createdAt: FieldValue.serverTimestamp(),
   });
   return `custom-${id}`;

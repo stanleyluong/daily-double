@@ -8,6 +8,14 @@
   --board-deep: #071573;
   --gold: #f0c14b;
   --gold-soft: #d9a13c;
+  /* Hextech-style app shell (nav + social rail): near-black grounds with a
+     thin bronze/gold hairline, distinct from the bright board blue. */
+  --shell: #070b1e;
+  --shell-panel: #0b1230;
+  --shell-raised: #111a3d;
+  --hairline: rgba(200, 170, 110, 0.28);
+  --hairline-strong: rgba(200, 170, 110, 0.55);
+  --online: #46d17f;
 }
 
 @theme inline {
@@ -17,6 +25,10 @@
   --color-board-deep: var(--board-deep);
   --color-gold: var(--gold);
   --color-gold-soft: var(--gold-soft);
+  --color-shell: var(--shell);
+  --color-shell-panel: var(--shell-panel);
+  --color-shell-raised: var(--shell-raised);
+  --color-online: var(--online);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-bebas);

@@ -17,12 +17,16 @@ export async function POST(request: Request) {
   let mode: "normal" | "ranked" = "normal";
   let boardKey: string | undefined;
   let answerMs: number | undefined;
+  let scoringMode: "all_correct" | "winner_only" = "all_correct";
+  let pickMode: "winner" | "alternating" | "loser" = "winner";
   try {
     const body = (await request.json()) as {
       name?: string;
       mode?: string;
       boardKey?: string;
       answerMs?: number;
+      scoringMode?: string;
+      pickMode?: string;
     };
     name = body.name ?? "";
     if (body.mode === "ranked") mode = "ranked";
@@ -33,12 +37,14 @@ export async function POST(request: Request) {
       }
     }
     if (typeof body.answerMs === "number") answerMs = body.answerMs;
+    if (body.scoringMode === "winner_only") scoringMode = "winner_only";
+    if (body.pickMode === "alternating" || body.pickMode === "loser") pickMode = body.pickMode;
   } catch {
     /* all optional */
   }
 
   try {
-    const code = await createGame(uid, name, mode, boardKey, answerMs);
+    const code = await createGame(uid, name, mode, boardKey, answerMs, scoringMode, pickMode);
     return NextResponse.json({ code });
   } catch (error) {
     return NextResponse.json(

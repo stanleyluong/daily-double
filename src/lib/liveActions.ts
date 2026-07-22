@@ -22,8 +22,10 @@ export const liveCreate = (
   name: string,
   mode: "normal" | "ranked" = "normal",
   boardKey?: string,
-  answerMs?: number
-) => post<{ code: string }>(user, "create", { name, mode, boardKey, answerMs });
+  answerMs?: number,
+  scoringMode?: "all_correct" | "winner_only",
+  pickMode?: "winner" | "alternating" | "loser"
+) => post<{ code: string }>(user, "create", { name, mode, boardKey, answerMs, scoringMode, pickMode });
 export const livePause = (user: User, gameId: string, paused: boolean) =>
   post(user, "pause", { gameId, paused });
 export const liveJoin = (user: User, code: string, name: string) =>
@@ -38,6 +40,8 @@ export const liveContinue = (user: User, gameId: string) => post(user, "continue
 export const liveFinalWager = (user: User, gameId: string, wager: number) =>
   post(user, "final-wager", { gameId, wager });
 export const liveStartFinal = (user: User, gameId: string) => post(user, "final-start", { gameId });
+export const liveChat = (user: User, gameId: string, text: string) =>
+  post(user, "chat", { gameId, text });
 export const liveHeartbeat = (user: User, gameId: string) => post(user, "heartbeat", { gameId });
 export const liveLeave = (user: User, gameId: string) => post(user, "leave", { gameId });
 export const liveReportDrop = (user: User, gameId: string, droppedUid: string) =>

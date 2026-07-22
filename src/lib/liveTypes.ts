@@ -15,6 +15,18 @@ export type LiveMode = "normal" | "ranked";
 export type LivePhase = "lobby" | "picking" | "active" | "reveal" | "final_wager" | "finished";
 export type PauseReason = "manual" | "disconnect";
 
+// House rules, chosen before the game and fixed for its duration.
+//   all_correct → every correct answer scores the clue's value (default).
+//   winner_only → only the fastest correct answer scores; slower correct
+//                 answers earn nothing (real-buzzer semantics).
+export type ScoringMode = "all_correct" | "winner_only";
+//   winner      → the fastest correct answerer picks next; if nobody's right,
+//                 the current picker keeps control (default).
+//   alternating → the pick rotates through players in seat order, regardless
+//                 of who got it right.
+//   loser       → whoever is in last place (lowest score) picks next.
+export type PickMode = "winner" | "alternating" | "loser";
+
 // A player is considered disconnected if their last heartbeat is older than
 // this. Clients heartbeat every HEARTBEAT_MS while in a running game.
 export const HEARTBEAT_MS = 4000;
@@ -23,6 +35,18 @@ export const DISCONNECT_MS = 12000;
 export interface LivePlayer {
   uid: string;
   name: string;
+}
+
+// In-game group chat. Kept as a capped array right on the game doc, which
+// every member already live-subscribes to via onSnapshot — so messages arrive
+// in real time without any new client-read surface.
+export const MAX_CHAT = 40;
+export interface LiveChatMessage {
+  id: string;
+  uid: string;
+  name: string;
+  text: string;
+  at: number; // epoch ms
 }
 
 export interface RevealResult {
@@ -51,6 +75,12 @@ export interface LiveGame {
   boardId: string | null;
   // Game setting: length of each answer window in ms (default ANSWER_MS).
   answerMs: number;
+  // House rules (see ScoringMode / PickMode). Older games without these fields
+  // fall back to the original behavior (all_correct / winner).
+  scoringMode: ScoringMode;
+  pickMode: PickMode;
+  // In-game group chat (last MAX_CHAT messages).
+  chat: LiveChatMessage[];
   players: LivePlayer[];
   playerUids: string[];
   scores: Record<string, number>;

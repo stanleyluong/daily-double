@@ -9,7 +9,14 @@ import type { LiveGame } from "@/lib/liveTypes";
 // reads Firestore straight from the browser; security rules require the
 // caller to be a member of the game (uid in playerUids), so callers must
 // have joined via the API before mounting this.
-export function useLiveGame(gameId: string | null): {
+export function useLiveGame(
+  gameId: string | null,
+  // Only subscribe once true. The security rules require the caller to be a
+  // game member, so the page must finish joining (via the API) before we open
+  // the listener — otherwise the very first read is permission-denied and the
+  // listener errors out permanently.
+  enabled = true
+): {
   game: LiveGame | null;
   error: string | null;
   loading: boolean;
@@ -30,7 +37,7 @@ export function useLiveGame(gameId: string | null): {
   }
 
   useEffect(() => {
-    if (!gameId) return;
+    if (!gameId || !enabled) return;
     const unsub = onSnapshot(
       doc(firestore, "liveGames", gameId),
       (snap) => {
@@ -49,7 +56,7 @@ export function useLiveGame(gameId: string | null): {
       }
     );
     return () => unsub();
-  }, [gameId]);
+  }, [gameId, enabled]);
 
   return { game, error, loading };
 }

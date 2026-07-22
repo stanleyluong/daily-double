@@ -16,13 +16,17 @@ import {
   COUNTDOWN_MS,
   FINAL_ANSWER_MS,
   FINAL_WAGER_MS,
+  MAX_CHAT,
   MAX_PLAYERS,
+  type LiveChatMessage,
   type LiveGame,
   type LiveMode,
   type LivePhase,
   type LivePlayer,
   type LiveReveal,
+  type PickMode,
   type RevealResult,
+  type ScoringMode,
 } from "@/lib/liveTypes";
 import { applyRankedResults } from "@/lib/ranking";
 import { markPlayed, pickUnplayedHistorical } from "@/lib/played";
@@ -91,6 +95,9 @@ function toGame(id: string, data: FirebaseFirestore.DocumentData): LiveGame {
     boardDate: data.boardDate,
     boardId: data.boardId ?? null,
     answerMs: data.answerMs ?? ANSWER_MS,
+    scoringMode: data.scoringMode ?? "all_correct",
+    pickMode: data.pickMode ?? "winner",
+    chat: data.chat ?? [],
     players: data.players ?? [],
     playerUids: data.playerUids ?? [],
     scores: data.scores ?? {},
@@ -182,7 +189,9 @@ export async function createGame(
   name: string,
   mode: LiveMode = "normal",
   boardKey?: string,
-  answerMs?: number
+  answerMs?: number,
+  scoringMode: ScoringMode = "all_correct",
+  pickMode: PickMode = "winner"
 ): Promise<string> {
   // "unplayed" → a real historical episode the host hasn't played yet.
   let resolvedKey = boardKey;
@@ -190,6 +199,9 @@ export async function createGame(
   const useSpecific = !!resolvedKey && resolvedKey !== "pool";
   const boardDate = useSpecific ? resolvedKey! : await pickBoardDate();
   const window = ANSWER_MS_OPTIONS.includes(answerMs as (typeof ANSWER_MS_OPTIONS)[number]) ? answerMs! : ANSWER_MS;
+  const scoring: ScoringMode = scoringMode === "winner_only" ? "winner_only" : "all_correct";
+  const picking: PickMode =
+    pickMode === "alternating" || pickMode === "loser" ? pickMode : "winner";
   const player: LivePlayer = { uid, name: cleanName(name, "Player 1") };
 
   // Retry on the astronomically-unlikely code collision.
@@ -203,6 +215,9 @@ export async function createGame(
         boardDate,
         boardId: null,
         answerMs: window,
+        scoringMode: scoring,
+        pickMode: picking,
+        chat: [],
         players: [player],
         playerUids: [uid],
         scores: { [uid]: 0 },
@@ -301,6 +316,68 @@ function currentRoundClueIds(board: Board, roundIndex: number): string[] {
   return round.categories.flatMap((c) => c.clues.map((cl) => cl.id));
 }
 
+// Decide who picks the next clue, per the game's pickMode. `scores` is the
+// post-clue tally (used by "loser"); `fastestCorrectUid` is the buzzer winner.
+// Returning null means "leave the pick with the current picker" (continueGame
+// falls back to game.pickerUid) — only the "winner" rule does that, when no one
+// answered correctly.
+function nextPicker(
+  g: LiveGame,
+  scores: Record<string, number>,
+  fastestCorrectUid: string | null
+): string | null {
+  const order = g.playerUids;
+  if (order.length === 0) return null;
+  switch (g.pickMode) {
+    case "alternating": {
+      const cur = g.pickerUid ? order.indexOf(g.pickerUid) : -1;
+      return order[(cur + 1) % order.length];
+    }
+    case "loser": {
+      // Last place picks; ties break by seat order (first lowest wins).
+      let pick = order[0];
+      let min = scores[pick] ?? 0;
+      for (const uid of order) {
+        const s = scores[uid] ?? 0;
+        if (s < min) {
+          min = s;
+          pick = uid;
+        }
+      }
+      return pick;
+    }
+    case "winner":
+    default:
+      return fastestCorrectUid;
+  }
+}
+
+// Post a message to the in-game group chat. Members only. Appends to the
+// capped `chat` array on the game doc (which every member live-subscribes to),
+// trimming to the most recent MAX_CHAT so the doc can't grow unbounded.
+export async function postChat(gameId: string, uid: string, text: string): Promise<void> {
+  const clean = (text ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+  if (!clean) throw new Error("empty");
+  const ref = gameRef(gameId);
+  await db().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error("no-game");
+    const g = toGame(gameId, snap.data()!);
+    if (!g.playerUids.includes(uid)) throw new Error("not-a-player");
+    // Use the player's in-game name so chat matches the scoreboard.
+    const name = g.players.find((p) => p.uid === uid)?.name ?? "Player";
+    const msg: LiveChatMessage = {
+      id: `${Date.now().toString(36)}-${uid.slice(0, 6)}`,
+      uid,
+      name,
+      text: clean,
+      at: Date.now(),
+    };
+    const chat = [...g.chat, msg].slice(-MAX_CHAT);
+    tx.update(ref, { chat, updatedAt: FieldValue.serverTimestamp() });
+  });
+}
+
 export async function pickClue(gameId: string, uid: string, clueId: string): Promise<void> {
   const ref = gameRef(gameId);
   const game = await getGame(gameId);
@@ -363,9 +440,24 @@ export async function submitAnswer(
     answer: clean,
     submittedAt: FieldValue.serverTimestamp(),
   });
-  await ref.update({
-    currentSubmittedUids: FieldValue.arrayUnion(uid),
-    updatedAt: FieldValue.serverTimestamp(),
+  // Record the "answered" tick in a transaction so two near-simultaneous
+  // submits can't each miss that they were the last one in. Once everyone has
+  // answered we pull answerEndsAt to now, so clients resolve immediately
+  // instead of watching the clock tick down for nothing.
+  await db().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const g = toGame(gameId, snap.data()!);
+    if (g.phase !== "active" || g.currentClueId !== clueId) return;
+    const submitted = Array.from(new Set([...g.currentSubmittedUids, uid]));
+    const everyoneIn = g.playerUids.every((u) => submitted.includes(u));
+    tx.update(ref, {
+      currentSubmittedUids: submitted,
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(everyoneIn && !g.paused && g.answerEndsAt !== null && Date.now() < g.answerEndsAt
+        ? { answerEndsAt: Date.now() }
+        : {}),
+    });
   });
 }
 
@@ -428,9 +520,9 @@ export async function resolveClue(gameId: string): Promise<void> {
 
     const firstComment = judged.find((j) => j.comment)?.comment ?? "";
 
-    // Fastest correct answerer controls the next pick (grid clues only).
+    // Fastest correct answerer, by submission time.
     const correct = judged.filter((j) => j.correct).sort((a, b) => a.at - b.at);
-    const nextPickerUid = isFinal ? null : correct.length > 0 ? correct[0].uid : null;
+    const fastestCorrectUid = correct.length > 0 ? correct[0].uid : null;
 
     // 2. Commit the ruling: bump scores, write reveal, advance phase — all in
     //    a transaction, guarded so this can't double-apply.
@@ -454,9 +546,21 @@ export async function resolveClue(gameId: string): Promise<void> {
         for (const uid of g.playerUids) results[uid] = { answer: null, outcome: "none" };
         for (const j of judged) {
           results[j.uid] = { answer: j.answer, outcome: j.correct ? "correct" : "wrong" };
-          if (j.correct) scores[j.uid] = (scores[j.uid] ?? 0) + (clue.value ?? 0);
+          if (!j.correct) continue;
+          // Scoring house rule: everyone correct scores, or only the fastest.
+          const earnsMoney = g.scoringMode !== "winner_only" || j.uid === fastestCorrectUid;
+          if (earnsMoney) {
+            scores[j.uid] = (scores[j.uid] ?? 0) + (clue.value ?? 0);
+          } else {
+            // Right but too slow under winner-only rules — mark it as +$0 so the
+            // reveal shows they were correct without awarding money.
+            results[j.uid] = { answer: j.answer, outcome: "correct", wager: 0 };
+          }
         }
       }
+
+      // Who controls the next pick, per the pickMode house rule (grid only).
+      const nextPickerUid = isFinal ? null : nextPicker(g, scores, fastestCorrectUid);
 
       const reveal: LiveReveal = {
         clueId,
