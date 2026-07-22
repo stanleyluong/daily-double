@@ -483,10 +483,10 @@ export default function Game({ date }: { date?: string }) {
     persist(results, score, next);
   };
 
-  // Arrow-key navigation for the desktop grid: moves in the given
-  // direction, skipping over already-answered (disabled) cells rather than
-  // getting stuck focused on a button that can't be activated. Bounded by
-  // grid size so it can't loop forever.
+  // Arrow-key navigation for the desktop grid: moves one cell in the given
+  // direction, landing on any real cell — answered or not — so answered clues
+  // can be reached and reviewed. Only truly empty cells (a short category) are
+  // skipped. Bounded by grid size so it can't loop forever.
   const moveFocus = useCallback(
     (dRow: number, dCol: number) => {
       const currentRound = board?.rounds[roundIndex];
@@ -500,13 +500,13 @@ export default function Game({ date }: { date?: string }) {
         if (nextRow < 0 || nextRow >= rows || nextCol < 0 || nextCol >= cols) break;
         row = nextRow;
         col = nextCol;
-        const clue = currentRound.categories[col]?.clues[row];
-        if (clue && !results[clue.id]) break;
+        // Stop on the first cell that actually has a clue (skip empty holes).
+        if (currentRound.categories[col]?.clues[row]) break;
       }
       setFocusedCell({ row, col });
       cellRefs.current[row]?.[col]?.focus();
     },
-    [board, roundIndex, focusedCell, results]
+    [board, roundIndex, focusedCell]
   );
 
   const onGridKeyDown = (e: React.KeyboardEvent) => {
