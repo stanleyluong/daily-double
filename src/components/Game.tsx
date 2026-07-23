@@ -123,6 +123,9 @@ export default function Game({ date }: { date?: string }) {
   // hint), a second Esc within the window reveals. Ref holds the disarm timer.
   const [revealArmed, setRevealArmed] = useState(false);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // One appeal per game: whether it's been spent, and whether one is in flight.
+  const [appealUsed, setAppealUsed] = useState(false);
+  const [appealing, setAppealing] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState(0);
   const [copied, setCopied] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -287,11 +290,13 @@ export default function Game({ date }: { date?: string }) {
           results: Record<string, ClueResult>;
           score: number;
           submitted: boolean;
+          appealUsed?: boolean;
         };
 
         setResults(data.results);
         setScore(data.score);
         setSubmitted(data.submitted);
+        setAppealUsed(!!data.appealUsed);
         metaRef.current.submitted = data.submitted;
 
         // Land on the first round that isn't fully answered yet, rather
@@ -425,6 +430,65 @@ export default function Game({ date }: { date?: string }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [phase]);
+
+  // Contest a wrong ruling — one appeal per game. A granted appeal flips the
+  // clue to correct and swings the score by 2× its value (undo the −, add the
+  // +). Whether granted or denied, the appeal is spent.
+  const appeal = useCallback(async () => {
+    if (!board || !active || !user || !verdict || verdict.outcome !== "wrong" || appealUsed || appealing) return;
+    setAppealing(true);
+    const clueId = active.id;
+    const pointValue = verdict.pointValue;
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch("/api/judge/appeal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ date: board.date, boardId: board.boardId, clueId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === "no-appeals-left") {
+          setAppealUsed(true);
+          showToast("You've already used your appeal this game.");
+        } else if (data.error === "board-changed") {
+          handleBoardChanged();
+        } else {
+          showToast(typeof data.error === "string" ? data.error : "Appeal failed — try again.");
+        }
+        return;
+      }
+      setAppealUsed(true);
+      if (data.granted) {
+        setResults((prev) => {
+          const next = {
+            ...prev,
+            [clueId]: { ...prev[clueId], outcome: "correct" as const, comment: String(data.comment ?? "") },
+          };
+          setScore((prevScore) => {
+            const nextScore = prevScore + 2 * pointValue;
+            persist(next, nextScore, roundIndex);
+            return nextScore;
+          });
+          return next;
+        });
+        setVerdict((v) => (v ? { ...v, outcome: "correct", comment: String(data.comment ?? "") } : v));
+        showToast(`Appeal granted! +$${(2 * pointValue).toLocaleString()}`);
+      } else {
+        setResults((prev) => {
+          const next = { ...prev, [clueId]: { ...prev[clueId], comment: String(data.comment ?? "") } };
+          persist(next, score, roundIndex);
+          return next;
+        });
+        setVerdict((v) => (v ? { ...v, comment: String(data.comment ?? "") } : v));
+        showToast("Appeal denied — the ruling stands.");
+      }
+    } catch {
+      showToast("Appeal failed — try again.");
+    } finally {
+      setAppealing(false);
+    }
+  }, [board, active, user, verdict, appealUsed, appealing, roundIndex, score, persist, showToast, handleBoardChanged]);
 
   const openClue = (clue: PublicClue, categoryTitle: string) => {
     const existing = results[clue.id];
@@ -895,7 +959,7 @@ export default function Game({ date }: { date?: string }) {
                           ? `${cat.title}, $${clue.value}, answered ${result.outcome} — answer: ${result.correctAnswer}. Review.`
                           : `${cat.title}, $${clue.value}`
                       }
-                      className={`rounded-sm min-h-[64px] md:min-h-[76px] flex items-center justify-center transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold focus-visible:outline-offset-2 ${
+                      className={`rounded-sm min-h-[64px] md:min-h-[76px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold ${
                         result
                           ? "bg-board/30 hover:bg-board/50 cursor-pointer"
                           : "bg-board hover:bg-board-deep cursor-pointer"
@@ -1228,10 +1292,25 @@ export default function Game({ date }: { date?: string }) {
                       <span className="text-gold">{verdict.correctAnswer}</span>
                     </p>
                     {verdict.comment && <p className="text-blue-200/80 italic">{verdict.comment}</p>}
-                    <div className="flex justify-end mt-6">
+                    <div className="flex items-center justify-between gap-3 mt-6">
+                      <div className="min-h-[2.5rem] flex items-center">
+                        {verdict.outcome === "wrong" &&
+                          (!appealUsed ? (
+                            <button
+                              onClick={appeal}
+                              disabled={appealing}
+                              title="One appeal per game"
+                              className="font-display tracking-wide text-sm border border-gold/40 text-gold px-4 py-2 rounded hover:bg-board-deep disabled:opacity-50"
+                            >
+                              {appealing ? "Appealing…" : "⚖ Appeal (1 left)"}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-blue-200/40">No appeals left</span>
+                          ))}
+                      </div>
                       <button
                         onClick={closeClue}
-                        className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
+                        className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded shrink-0"
                       >
                         {reviewing ? "Close" : active.isFinal ? "See final results" : "Back to board"}{" "}
                         <span className="opacity-60">⏎</span>

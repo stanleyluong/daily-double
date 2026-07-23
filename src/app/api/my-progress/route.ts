@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isValidDateKey, todayKey } from "@/lib/jeopardy";
-import { answeredCluesForDate, summarize } from "@/lib/answers";
+import { answeredCluesForDate, hasUsedAppeal, summarize } from "@/lib/answers";
 import { hasSubmittedScore } from "@/lib/scores";
 import { authAdmin } from "@/lib/firebaseAdmin";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
@@ -38,9 +38,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [clues, submitted] = await Promise.all([
+    const [clues, submitted, appealUsed] = await Promise.all([
       answeredCluesForDate(uid, date),
       hasSubmittedScore(date, uid),
+      hasUsedAppeal(uid, date),
     ]);
 
     const results: Record<
@@ -57,7 +58,7 @@ export async function GET(request: Request) {
       };
     }
 
-    return NextResponse.json({ results, score: summarize(clues).score, submitted });
+    return NextResponse.json({ results, score: summarize(clues).score, submitted, appealUsed });
   } catch (error) {
     console.error("Progress fetch failed:", error);
     return NextResponse.json({ error: "Couldn't load your progress." }, { status: 500 });

@@ -813,7 +813,7 @@ export async function judgeAnswer(
       format: { type: "json_schema", schema: JUDGE_SCHEMA },
     },
     system:
-      "You judge answers for a Jeopardy!-style trivia game. Be lenient the way a human host is: accept last names alone, obvious misspellings, missing articles, and answers with or without the \"what is / who is\" framing. Reject answers that are genuinely a different thing, too vague, or hedged lists of guesses. Your comment is one short, playful sentence addressed to the player — never reveal information beyond whether they were right and the correct answer.",
+      "You judge answers for a Jeopardy!-style trivia game. Be lenient the way a human host is: accept last names alone, obvious misspellings, missing articles, answers with or without the \"what is / who is\" framing, and answers that contain the essential words of the correct response even if reordered. Exception: when the category is about rhyme, wordplay, spelling, sequence, or word order, the order IS the answer, so a reordered response is wrong. Reject answers that are genuinely a different thing, too vague, or hedged lists of guesses. Your comment is one short, playful sentence addressed to the player — never reveal information beyond whether they were right and the correct answer.",
     messages: [
       {
         role: "user",
@@ -825,6 +825,41 @@ Also acceptable: ${clue.acceptable.length ? clue.acceptable.join("; ") : "(none 
 Player's response: ${JSON.stringify(playerAnswer)}
 
 Was the player correct?`,
+      },
+    ],
+  });
+  return parseJson<{ correct: boolean; comment: string }>(message);
+}
+
+// Second-opinion pass for an appealed ruling. The player is contesting a
+// rejection, so reconsider generously and give the benefit of the doubt on
+// close calls — but still uphold the rejection for answers that are genuinely
+// a different thing or clearly wrong.
+export async function judgeAppeal(
+  category: { title: string },
+  clue: { clue: string; answer: string; acceptable: string[] },
+  playerAnswer: string
+): Promise<{ correct: boolean; comment: string }> {
+  const message = await client().messages.create({
+    model: MODEL,
+    max_tokens: 512,
+    output_config: {
+      effort: "low",
+      format: { type: "json_schema", schema: JUDGE_SCHEMA },
+    },
+    system:
+      "You are reviewing an APPEALED ruling in a Jeopardy!-style game — the player's answer was marked wrong and they're contesting it. Reconsider generously and give the benefit of the doubt on genuinely close calls: if the response is a defensible match — a valid alternate name, phrasing, spelling, or close-enough form — rule it CORRECT. Only uphold the rejection if the answer is genuinely a different thing or clearly wrong (including a reordered answer when the category is about rhyme, wordplay, or sequence). Your comment is one short, friendly sentence explaining the appeal decision.",
+    messages: [
+      {
+        role: "user",
+        content: `Category: ${category.title}
+Clue: ${clue.clue}
+Correct answer: ${clue.answer}
+Also acceptable: ${clue.acceptable.length ? clue.acceptable.join("; ") : "(none listed)"}
+
+Player's response: ${JSON.stringify(playerAnswer)}
+
+On appeal, should this count as correct?`,
       },
     ],
   });

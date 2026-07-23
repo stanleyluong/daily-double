@@ -88,6 +88,41 @@ export async function answeredCluesForDate(uid: string, date: string): Promise<A
   return snap.docs.map((doc) => fromDoc(doc.data()));
 }
 
+// Per-game appeal: each account gets one appeal per board (keyed by date),
+// stored in its own subcollection so it never mixes into the answeredClues
+// score computation. claimAppeal atomically reserves the single appeal —
+// create() fails if it already exists, so two attempts can't both win.
+export async function hasUsedAppeal(uid: string, date: string): Promise<boolean> {
+  const snap = await db().collection("users").doc(uid).collection("appeals").doc(date).get();
+  return snap.exists;
+}
+
+export async function claimAppeal(uid: string, date: string, clueId: string): Promise<boolean> {
+  const ref = db().collection("users").doc(uid).collection("appeals").doc(date);
+  try {
+    await ref.create({ clueId, at: FieldValue.serverTimestamp() });
+    return true;
+  } catch {
+    return false; // already used this game
+  }
+}
+
+// Flip a recorded clue's outcome/comment — used when an appeal is granted.
+export async function updateClueOutcome(
+  uid: string,
+  date: string,
+  clueId: string,
+  outcome: "correct" | "wrong" | "passed",
+  comment: string
+): Promise<void> {
+  await db()
+    .collection("users")
+    .doc(uid)
+    .collection("answeredClues")
+    .doc(docId(date, clueId))
+    .set({ outcome, comment }, { merge: true });
+}
+
 export interface SessionTotals {
   score: number;
   correct: number;
