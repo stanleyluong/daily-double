@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { readAutoAdvance, writeAutoAdvance, type AutoAdvance } from "@/lib/prefs";
+import { resetTour } from "@/lib/onboarding";
 import {
   getMusicVolume,
   getSfxVolume,
@@ -164,6 +165,18 @@ export default function SettingsPage() {
               className="w-full accent-gold"
             />
           </div>
+        </section>
+
+        <section className="mt-10 text-center">
+          <button
+            onClick={() => {
+              resetTour();
+              window.location.href = "/";
+            }}
+            className="text-sm text-gold/70 hover:text-gold underline underline-offset-2"
+          >
+            Show the welcome tour again
+          </button>
         </section>
       </main>
     </div>

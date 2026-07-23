@@ -7,6 +7,7 @@ import FriendsProvider from "@/components/FriendsProvider";
 import FriendsRail from "@/components/FriendsRail";
 import InviteBanner from "@/components/InviteBanner";
 import NavBar from "@/components/NavBar";
+import OnboardingTour from "@/components/OnboardingTour";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -83,6 +84,7 @@ export default function RootLayout({
                 <FriendsRail />
               </div>
               <InviteBanner />
+              <OnboardingTour />
             </DmProvider>
           </FriendsProvider>
         </AuthProvider>
