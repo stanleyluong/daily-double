@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { db, authAdmin } from "@/lib/firebaseAdmin";
+import { headToHeadAllFor } from "@/lib/headToHead";
 
 // Friends, presence, and invites — all server-side (Admin SDK) so no new
 // client-read security rules are needed on the shared Firestore project.
@@ -24,6 +25,7 @@ export interface FriendRow {
   uid: string;
   name: string;
   online: boolean;
+  h2h?: { games: number; myWins: number; theirWins: number; ties: number };
 }
 export interface RequestRow {
   fromUid: string;
@@ -44,16 +46,19 @@ export async function listFriendsData(
   ]);
 
   const friendUids = friendsSnap.docs.map((d) => d.id);
-  const presence = await Promise.all(
-    friendUids.map((f) => db().collection("presence").doc(f).get())
-  );
+  const [presence, h2h] = await Promise.all([
+    Promise.all(friendUids.map((f) => db().collection("presence").doc(f).get())),
+    headToHeadAllFor(uid),
+  ]);
   const now = Date.now();
   const friends: FriendRow[] = friendsSnap.docs.map((d, i) => {
     const last = (presence[i].get("lastActive") as number | undefined) ?? 0;
+    const rec = h2h[d.id];
     return {
       uid: d.id,
       name: (presence[i].get("name") as string | undefined) ?? (d.get("name") as string) ?? "Player",
       online: now - last < ONLINE_MS,
+      ...(rec ? { h2h: { games: rec.games, myWins: rec.myWins, theirWins: rec.theirWins, ties: rec.ties } } : {}),
     };
   });
   friends.sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));

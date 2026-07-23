@@ -136,7 +136,13 @@ export default function FriendsPage() {
                         className={`h-2.5 w-2.5 rounded-full ${f.online ? "bg-green-400" : "bg-blue-200/25"}`}
                         title={f.online ? "Online" : "Offline"}
                       />
-                      <span className="flex-1 text-blue-100">{f.name}</span>
+                      <span className="flex-1 min-w-0 truncate text-blue-100">{f.name}</span>
+                      {f.h2h && f.h2h.games > 0 && (
+                        <span className="text-xs text-blue-200/50 shrink-0" title="Head-to-head record">
+                          {f.h2h.myWins}–{f.h2h.theirWins}
+                          {f.h2h.ties > 0 ? `–${f.h2h.ties}` : ""}
+                        </span>
+                      )}
                       {(dmUnread[f.uid] ?? 0) > 0 && (
                         <span className="min-w-[1.2rem] h-5 px-1 grid place-items-center rounded-full bg-gold text-board-deep text-xs font-bold">
                           {dmUnread[f.uid]}

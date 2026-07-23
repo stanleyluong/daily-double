@@ -30,6 +30,7 @@ import {
 } from "@/lib/liveTypes";
 import { applyRankedResults } from "@/lib/ranking";
 import { markPlayed, pickUnplayedHistorical } from "@/lib/played";
+import { recordHeadToHead } from "@/lib/headToHead";
 
 export { ANSWER_MS, COUNTDOWN_MS } from "@/lib/liveTypes";
 export type { LiveGame, LiveMode, LivePhase, LivePlayer, LiveReveal, RevealResult } from "@/lib/liveTypes";
@@ -781,6 +782,16 @@ export async function continueGame(gameId: string, uid: string): Promise<void> {
   // `rated` flag), so a redundant continue into the finish is safe.
   if (phase === "finished" && game.mode === "ranked") {
     await applyRankedResults(gameId).catch((e) => console.error("ranked apply failed:", e));
+  }
+  // Head-to-head is best-effort and not idempotency-guarded like ranked Elo —
+  // a redundant continue() into an already-finished game re-increments it.
+  // continueGame is normally only reachable from "reveal", so in practice this
+  // fires once; accept the small risk rather than add another guard field.
+  if (phase === "finished" && game.playerUids.length >= 2) {
+    const finalScores = (await getGame(gameId))?.scores ?? game.scores;
+    await recordHeadToHead(game.players, finalScores).catch((e) =>
+      console.error("head-to-head record failed:", e)
+    );
   }
 }
 
