@@ -1378,6 +1378,15 @@ export default function Game({ date }: { date?: string }) {
                     <div className="flex gap-3 justify-end">
                       <button
                         type="button"
+                        onClick={closeClue}
+                        disabled={phase === "judging"}
+                        title="Leave this clue unanswered — you can come back to it later"
+                        className="px-4 py-2 text-blue-200/50 hover:text-blue-100 disabled:opacity-50 transition-colors"
+                      >
+                        Back to board
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => submitAnswer(true)}
                         disabled={phase === "judging"}
                         className={`px-4 py-2 disabled:opacity-50 transition-colors ${
