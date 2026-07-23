@@ -159,6 +159,9 @@ export default function Game({ date }: { date?: string }) {
   // hint), a second Esc within the window reveals. Ref holds the disarm timer.
   const [revealArmed, setRevealArmed] = useState(false);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Only offer "Back to board" once the judge has actually failed on this
+  // clue — otherwise it'd let someone peek at a clue and bail with no record.
+  const [judgeFailed, setJudgeFailed] = useState(false);
   // One appeal per game: whether it's been spent, and whether one is in flight.
   const [appealUsed, setAppealUsed] = useState(false);
   const [appealing, setAppealing] = useState(false);
@@ -440,6 +443,7 @@ export default function Game({ date }: { date?: string }) {
         });
       } catch (error) {
         setPhase("answering");
+        setJudgeFailed(true);
         showToast(error instanceof Error ? error.message : "Judging failed — try again.");
       }
     },
@@ -560,6 +564,7 @@ export default function Game({ date }: { date?: string }) {
     setWagerInput("");
     setVerdict(null);
     setReviewing(false);
+    setJudgeFailed(false);
     setPhase(clue.dailyDouble ? "wager" : "answering");
   };
 
@@ -583,6 +588,7 @@ export default function Game({ date }: { date?: string }) {
     setInput("");
     setWagerInput("");
     setVerdict(null);
+    setJudgeFailed(false);
     setPhase("wager");
   };
 
@@ -610,6 +616,7 @@ export default function Game({ date }: { date?: string }) {
     setVerdict(null);
     setReviewing(false);
     setAppealReason("");
+    setJudgeFailed(false);
   }, []);
 
   // After a ruling, Enter (or Escape) returns to the board without reaching
@@ -1376,15 +1383,17 @@ export default function Game({ date }: { date?: string }) {
                       className="w-full rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-lg placeholder:text-blue-200/40"
                     />
                     <div className="flex gap-3 justify-end">
-                      <button
-                        type="button"
-                        onClick={closeClue}
-                        disabled={phase === "judging"}
-                        title="Leave this clue unanswered — you can come back to it later"
-                        className="px-4 py-2 text-blue-200/50 hover:text-blue-100 disabled:opacity-50 transition-colors"
-                      >
-                        Back to board
-                      </button>
+                      {judgeFailed && (
+                        <button
+                          type="button"
+                          onClick={closeClue}
+                          disabled={phase === "judging"}
+                          title="Leave this clue unanswered — you can come back to it later"
+                          className="px-4 py-2 text-blue-200/50 hover:text-blue-100 disabled:opacity-50 transition-colors"
+                        >
+                          Back to board
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => submitAnswer(true)}
