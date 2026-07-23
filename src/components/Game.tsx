@@ -575,6 +575,22 @@ export default function Game({ date }: { date?: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [phase, closeClue]);
 
+  // When the clue modal closes, focus would otherwise land on <body>, so arrow
+  // keys do nothing until you tab back. Return focus to the cell that was open
+  // (desktop grid), so arrow navigation resumes immediately. No-op on mobile
+  // (the grid buttons are display:none there).
+  const modalWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (active) {
+      modalWasOpenRef.current = true;
+      return;
+    }
+    if (modalWasOpenRef.current) {
+      modalWasOpenRef.current = false;
+      cellRefs.current[focusedCell.row]?.[focusedCell.col]?.focus();
+    }
+  }, [active, focusedCell]);
+
   const advanceRound = () => {
     if (!board) return;
     const next = roundIndex + 1;
