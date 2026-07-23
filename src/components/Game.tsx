@@ -562,9 +562,11 @@ export default function Game({ date }: { date?: string }) {
   }, []);
 
   // After a ruling, Enter (or Escape) returns to the board without reaching
-  // for the mouse.
+  // for the mouse. Only while the modal is actually open (active) — otherwise
+  // this listener would keep swallowing Enter on the board (phase stays
+  // "result" after closing), breaking Enter-to-open on the grid.
   useEffect(() => {
-    if (phase !== "result") return;
+    if (!active || phase !== "result") return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Enter" || e.key === "Escape") {
         e.preventDefault();
@@ -573,7 +575,7 @@ export default function Game({ date }: { date?: string }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [phase, closeClue]);
+  }, [active, phase, closeClue]);
 
   // When the clue modal closes, focus would otherwise land on <body>, so arrow
   // keys do nothing until you tab back. Return focus to the cell that was open
