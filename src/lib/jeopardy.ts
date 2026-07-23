@@ -185,9 +185,10 @@ async function generateCategories(
         content: `Create exactly 6 categories for the ${roundLabel} round of the daily board of ${date}.
 
 Requirements:
-- A diverse mix across the 6: at least one from history/geography/science, one from arts/literature, one from pop culture/sports/food, and one wordplay or gimmick category (e.g. all answers share a letter, rhyme, or contain a hidden word).
+- A diverse mix across the 6: at least one from history/geography/science, one from arts/literature, one from pop culture/sports/food, and one LIGHT wordplay category — rhymes, puns, or "before & after" — where the answers are ordinary knowledge and the wordplay is just the framing.
+- HARD BAN on letter-mechanic gimmicks: no "hidden word inside another word" (e.g. a body part concealed in a longer word), no anagrams, no "every answer contains/starts with/shares a specific letter", no acrostics. These require exact letter-by-letter matches that are easy to get wrong, and produce broken clues (e.g. claiming "disavow" hides "shin" when it does not). When unsure, make it a straightforward knowledge category instead.
 - Titles are short and punchy, puns welcome, ALL CAPS not required.
-- For each category, write a one-sentence "theme" that a clue writer would use to stay on-brief (for gimmick categories, state the gimmick precisely).
+- For each category, write a one-sentence "theme" that a clue writer would use to stay on-brief. For any wordplay category, state the gimmick precisely and ensure every clue's answer genuinely satisfies it.
 - Vary topics day to day; let the date seed your choices but never mention the date in titles.${
           harder
             ? "\n- This is the second (harder) round: categories should be a notch more specific or advanced than a first-round board, the way real Double Jeopardy! categories go deeper than the first round."
@@ -235,7 +236,7 @@ Requirements:
         }
 - Answers must be short (a name, term, title, or place — not a sentence) and factually correct beyond doubt. Do not write clues you are not certain about.
 - "acceptable" lists alternate correct forms: last name only, common nicknames, alternate spellings, with/without articles. Empty array if none.
-- Never include the answer text inside its own clue.
+- CRITICAL — never give the answer away in the clue: the clue text must not contain the answer, any word of the answer, or an obvious root/derivative of it. E.g. if the answer is "Abraham Lincoln", the clue may not contain "Abraham", "Lincoln", or "Lincoln's"; if the answer is "photosynthesis", it may not contain "photo", "synthesis", or "synthesize". Describe around it. If you can't write a clue without naming the answer, choose a different clue.
 - No two clues in this set may share the same answer, even worded differently.${
           avoidAnswers.length > 0
             ? `\n- These answers are already used elsewhere on today's board — none of your 5 answers may match or closely resemble any of them: ${avoidAnswers.join("; ")}`
