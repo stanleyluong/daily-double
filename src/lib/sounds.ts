@@ -43,11 +43,37 @@ export function setMusicMuted(v: boolean): void {
   localStorage.setItem(MUSIC_MUTE_KEY, v ? "1" : "0");
 }
 
+// Per-channel volume (0–1), independent of the mute toggles above — muting
+// hides a channel entirely; volume scales it while still on.
+const SFX_VOLUME_KEY = "daily-double-sfx-volume";
+const MUSIC_VOLUME_KEY = "daily-double-music-volume";
+
+function readVolume(key: string): number {
+  if (typeof window === "undefined") return 1;
+  const v = Number(localStorage.getItem(key));
+  return Number.isFinite(v) && v >= 0 && v <= 1 ? v : 1;
+}
+function writeVolume(key: string, v: number): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(key, String(Math.min(1, Math.max(0, v))));
+}
+
+export const getSfxVolume = () => readVolume(SFX_VOLUME_KEY);
+export const setSfxVolume = (v: number) => writeVolume(SFX_VOLUME_KEY, v);
+export const getMusicVolume = () => readVolume(MUSIC_VOLUME_KEY);
+export const setMusicVolume = (v: number) => {
+  writeVolume(MUSIC_VOLUME_KEY, v);
+  const a = els["maintheme"];
+  if (a) a.volume = v; // apply live if the theme's already loaded/playing
+};
+
 type OscType = "sine" | "square" | "sawtooth" | "triangle";
 
 function tone(freq: number, start: number, dur: number, type: OscType = "sine", peak = 0.16): void {
   const c = getCtx();
   if (!c) return;
+  peak *= getSfxVolume();
+  if (peak <= 0) return;
   const osc = c.createOscillator();
   const gain = c.createGain();
   osc.type = type;
@@ -138,6 +164,7 @@ function getEl(name: SoundName): HTMLAudioElement | null {
   }
   const a = new Audio(FILES[name]);
   a.preload = "auto";
+  a.volume = name === "maintheme" ? getMusicVolume() : getSfxVolume();
   a.addEventListener("error", () => { els[name] = null; }, { once: true }); // missing file -> synth
   els[name] = a;
   return a;
@@ -150,6 +177,7 @@ export function playSound(name: SoundName): void {
   // readyState >= 2 (HAVE_CURRENT_DATA) means the file is ready to play now.
   if (a && a.readyState >= 2) {
     try {
+      a.volume = name === "maintheme" ? getMusicVolume() : getSfxVolume();
       a.currentTime = 0;
       void a.play();
       return;

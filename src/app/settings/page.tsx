@@ -3,6 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { readAutoAdvance, writeAutoAdvance, type AutoAdvance } from "@/lib/prefs";
+import {
+  getMusicVolume,
+  getSfxVolume,
+  isMusicMuted,
+  isMuted,
+  setMusicVolume,
+  setSfxVolume,
+} from "@/lib/sounds";
 
 const OPTIONS: { value: AutoAdvance; label: string; desc: string }[] = [
   {
@@ -25,8 +33,14 @@ const OPTIONS: { value: AutoAdvance; label: string; desc: string }[] = [
 export default function SettingsPage() {
   const [autoAdvance, setAutoAdvance] = useState<AutoAdvance>("off");
   const [saved, setSaved] = useState(false);
+  const [musicVol, setMusicVol] = useState(1);
+  const [sfxVol, setSfxVol] = useState(1);
 
-  useEffect(() => setAutoAdvance(readAutoAdvance()), []);
+  useEffect(() => {
+    setAutoAdvance(readAutoAdvance());
+    setMusicVol(getMusicVolume());
+    setSfxVol(getSfxVolume());
+  }, []);
 
   const choose = (v: AutoAdvance) => {
     setAutoAdvance(v);
@@ -96,6 +110,60 @@ export default function SettingsPage() {
             </Link>
             .
           </p>
+        </section>
+
+        <section className="space-y-4 mt-10">
+          <h2 className="font-display text-2xl tracking-wide text-gold">Sound</h2>
+          <p className="text-blue-100/70 text-sm">
+            Music and sound effects mute independently (nav bar) — these sliders set how loud each
+            is while it&apos;s on.
+          </p>
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label htmlFor="music-vol" className="text-sm text-blue-100">
+                🎵 Music {isMusicMuted() && <span className="text-blue-200/40">(muted)</span>}
+              </label>
+              <span className="text-xs text-blue-200/50 tabular-nums">{Math.round(musicVol * 100)}%</span>
+            </div>
+            <input
+              id="music-vol"
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={musicVol}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setMusicVol(v);
+                setMusicVolume(v);
+              }}
+              className="w-full accent-gold"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label htmlFor="sfx-vol" className="text-sm text-blue-100">
+                🔊 Sound effects {isMuted() && <span className="text-blue-200/40">(muted)</span>}
+              </label>
+              <span className="text-xs text-blue-200/50 tabular-nums">{Math.round(sfxVol * 100)}%</span>
+            </div>
+            <input
+              id="sfx-vol"
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={sfxVol}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setSfxVol(v);
+                setSfxVolume(v);
+              }}
+              className="w-full accent-gold"
+            />
+          </div>
         </section>
       </main>
     </div>
