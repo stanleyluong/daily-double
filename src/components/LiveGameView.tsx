@@ -413,6 +413,13 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
             {!isMember && <p className="text-red-300 text-sm mt-4">You&apos;re not in this game.</p>}
 
             <InviteFriends gameCode={game.id} playerUids={game.playerUids} />
+
+            <Link
+              href={`/live/${game.id}/watch`}
+              className="inline-block mt-4 text-xs text-blue-200/40 hover:text-gold underline"
+            >
+              👁 Spectator link — share so anyone can watch (no sign-in needed)
+            </Link>
           </div>
         )}
 
