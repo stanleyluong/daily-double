@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PublicBoard, PublicClue } from "@/lib/jeopardy";
 import type { PercentileStats, ScoreRow } from "@/lib/scores";
 import { formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
+import { readAutoAdvance, type AutoAdvance } from "@/lib/prefs";
 import PercentileMeter from "@/components/PercentileMeter";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
@@ -67,6 +68,33 @@ function roundClueIds(board: PublicBoard, roundIndex: number): string[] {
   return round.categories.flatMap((c) => c.clues.map((cl) => cl.id));
 }
 
+// Auto-advance target after answering (a keyboard-play convenience): "value"
+// walks the same row (columns), "category" walks the same column (rows). Wraps
+// within the line and skips answered clues; null if the whole line is done.
+function nextAutoAdvanceCell(
+  mode: AutoAdvance,
+  from: { row: number; col: number },
+  round: { categories: { clues: { id: string }[] }[] },
+  answered: Record<string, unknown>
+): { row: number; col: number } | null {
+  const cols = round.categories.length;
+  const rows = 5;
+  if (mode === "value") {
+    for (let i = 1; i <= cols; i++) {
+      const col = (from.col + i) % cols;
+      const clue = round.categories[col]?.clues[from.row];
+      if (clue && !(clue.id in answered)) return { row: from.row, col };
+    }
+  } else if (mode === "category") {
+    for (let i = 1; i <= rows; i++) {
+      const row = (from.row + i) % rows;
+      const clue = round.categories[from.col]?.clues[row];
+      if (clue && !(clue.id in answered)) return { row, col: from.col };
+    }
+  }
+  return null;
+}
+
 // Purely cosmetic — the score snapping instantly on every answer read as
 // static. This animates the *displayed* number toward the real score over
 // ~600ms; every actual calculation (wagers, persistence, submission) still
@@ -111,6 +139,9 @@ export default function Game({ date }: { date?: string }) {
   const [focusedCell, setFocusedCell] = useState({ row: 0, col: 0 });
   const [prevRoundIndexForFocus, setPrevRoundIndexForFocus] = useState(0);
   const cellRefs = useRef<(HTMLButtonElement | null)[][]>([]);
+  // Set when a clue was just answered/revealed (not merely reviewed), so the
+  // focus-restore effect knows whether to honor the auto-advance preference.
+  const justAnsweredRef = useRef(false);
   const [active, setActive] = useState<ActiveClue | null>(null);
   const [phase, setPhase] = useState<"wager" | "answering" | "judging" | "result">("answering");
   const [wagerInput, setWagerInput] = useState("");
@@ -343,6 +374,7 @@ export default function Game({ date }: { date?: string }) {
       });
       setVerdict(result);
       setPhase("result");
+      justAnsweredRef.current = true; // enables auto-advance when the modal closes
     },
     [persist, totalClues, roundIndex]
   );
@@ -589,11 +621,25 @@ export default function Game({ date }: { date?: string }) {
       modalWasOpenRef.current = true;
       return;
     }
-    if (modalWasOpenRef.current) {
-      modalWasOpenRef.current = false;
-      cellRefs.current[focusedCell.row]?.[focusedCell.col]?.focus();
+    if (!modalWasOpenRef.current) return;
+    modalWasOpenRef.current = false;
+    let target = focusedCell;
+    // If the clue was just answered (not reviewed), honor the auto-advance
+    // preference and jump to the next unanswered clue of the same value/category.
+    if (justAnsweredRef.current) {
+      justAnsweredRef.current = false;
+      const round = board?.rounds[roundIndex];
+      const mode = readAutoAdvance();
+      if (mode !== "off" && round) {
+        const next = nextAutoAdvanceCell(mode, focusedCell, round, results);
+        if (next) {
+          target = next;
+          setFocusedCell(next);
+        }
+      }
     }
-  }, [active, focusedCell]);
+    cellRefs.current[target.row]?.[target.col]?.focus();
+  }, [active, focusedCell, board, roundIndex, results]);
 
   // "?" toggles the keyboard-shortcuts overlay (not while a clue is open or
   // while typing an answer); Escape closes it.

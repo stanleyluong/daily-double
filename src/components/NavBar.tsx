@@ -17,6 +17,7 @@ const TABS: { href: string; label: string }[] = [
   { href: "/rankings", label: "Rankings" },
   { href: "/history", label: "History" },
   { href: "/friends", label: "Friends" },
+  { href: "/me", label: "Me" },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -81,6 +82,16 @@ export default function NavBar() {
 
         {/* Account — desktop */}
         <div className="hidden md:flex items-center gap-3 text-sm">
+          <Link
+            href="/settings"
+            title="Settings"
+            aria-label="Settings"
+            className={`text-lg leading-none ${
+              isActive(pathname, "/settings") ? "text-gold" : "text-blue-200/60 hover:text-gold"
+            }`}
+          >
+            ⚙
+          </Link>
           {loading ? (
             <div className="h-8 w-24" aria-hidden />
           ) : user ? (
@@ -126,7 +137,7 @@ export default function NavBar() {
       {/* Mobile dropdown menu */}
       {menuOpen && (
         <nav className="md:hidden border-t border-[color:var(--hairline)] bg-shell px-3 py-2 flex flex-col">
-          {TABS.map((t) => {
+          {[...TABS, { href: "/settings", label: "Settings" }].map((t) => {
             const active = isActive(pathname, t.href);
             return (
               <Link
