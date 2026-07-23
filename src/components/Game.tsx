@@ -163,6 +163,7 @@ export default function Game({ date }: { date?: string }) {
   const [appealUsed, setAppealUsed] = useState(false);
   const [appealing, setAppealing] = useState(false);
   const [appealReason, setAppealReason] = useState("");
+  const [showRecap, setShowRecap] = useState(false);
   // Keyboard-shortcuts overlay (opened by the ⌨ button or the "?" hotkey).
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState(0);
@@ -1257,6 +1258,17 @@ export default function Game({ date }: { date?: string }) {
               </ol>
             )}
           </div>
+
+          {/* Full recap */}
+          <div className="max-w-2xl mx-auto mt-6">
+            <button
+              onClick={() => setShowRecap((v) => !v)}
+              className="block mx-auto font-display tracking-wide text-sm text-gold/80 hover:text-gold underline underline-offset-2"
+            >
+              {showRecap ? "Hide full recap ▲" : "See full recap — every clue & answer ▼"}
+            </button>
+            {showRecap && <Recap board={board} results={results} />}
+          </div>
         </div>
       )}
 
@@ -1543,6 +1555,97 @@ export default function Game({ date }: { date?: string }) {
           >
             ×
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Linear, scrollable recap of every clue on a finished board — the question,
+// your answer, and the correct answer — grouped by round then category.
+function Recap({ board, results }: { board: PublicBoard; results: Record<string, ClueResult> }) {
+  const outcomeStyle = (o: Outcome) =>
+    o === "correct" ? "text-green-400" : o === "wrong" ? "text-red-400" : "text-blue-200/40";
+  const outcomeMark = (o: Outcome) => (o === "correct" ? "✓" : o === "wrong" ? "✗" : "–");
+
+  return (
+    <div className="mt-6 space-y-8 text-left">
+      {board.rounds.map((round, ri) => (
+        <div key={ri}>
+          <p className="font-display text-lg tracking-wide text-gold uppercase mb-3 text-center">
+            {round.name}
+          </p>
+          <div className="space-y-4">
+            {round.categories.map((cat) => (
+              <div key={cat.title}>
+                <p className="text-xs uppercase tracking-wider text-blue-200/50 mb-1.5">{cat.title}</p>
+                <ul className="divide-y divide-board-deep bg-board-deep/30 rounded-lg overflow-hidden">
+                  {cat.clues.map((clue) => {
+                    const r = results[clue.id];
+                    if (!r) return null;
+                    return (
+                      <li key={clue.id} className="px-3 py-2.5 text-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-blue-100/90 flex-1">{clue.clue}</span>
+                          <span
+                            className={`shrink-0 font-display tracking-wide ${outcomeStyle(r.outcome)}`}
+                          >
+                            {outcomeMark(r.outcome)} ${clue.value}
+                          </span>
+                        </div>
+                        <p className="text-xs text-blue-200/50 mt-1">
+                          Answer: <span className="text-gold">{r.correctAnswer}</span>
+                          {r.playerAnswer && (
+                            <>
+                              {" "}
+                              · You:{" "}
+                              <span className={r.outcome === "correct" ? "text-green-300" : "text-red-300"}>
+                                {r.playerAnswer}
+                              </span>
+                            </>
+                          )}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {board.final && results.final && (
+        <div>
+          <p className="font-display text-lg tracking-wide text-gold uppercase mb-3 text-center">
+            Final Jeopardy
+          </p>
+          <div className="bg-board-deep/30 rounded-lg overflow-hidden px-3 py-2.5">
+            <p className="text-xs uppercase tracking-wider text-blue-200/50 mb-1.5">
+              {board.final.category}
+            </p>
+            <div className="flex items-start justify-between gap-3 text-sm">
+              <span className="text-blue-100/90 flex-1">{board.final.clue}</span>
+              <span className={`shrink-0 font-display tracking-wide ${outcomeStyle(results.final.outcome)}`}>
+                {outcomeMark(results.final.outcome)}
+                {results.final.pointValue ? ` $${results.final.pointValue.toLocaleString()}` : ""}
+              </span>
+            </div>
+            <p className="text-xs text-blue-200/50 mt-1">
+              Answer: <span className="text-gold">{results.final.correctAnswer}</span>
+              {results.final.playerAnswer && (
+                <>
+                  {" "}
+                  · You:{" "}
+                  <span
+                    className={results.final.outcome === "correct" ? "text-green-300" : "text-red-300"}
+                  >
+                    {results.final.playerAnswer}
+                  </span>
+                </>
+              )}
+            </p>
+          </div>
         </div>
       )}
     </div>
