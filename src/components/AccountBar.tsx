@@ -19,7 +19,7 @@ export default function AccountBar() {
       {user ? (
         <>
           <Link
-            href="/me"
+            href="/history"
             className="text-blue-200/80 hover:text-gold underline-offset-2 hover:underline truncate max-w-[10rem]"
           >
             {user.displayName || user.email}

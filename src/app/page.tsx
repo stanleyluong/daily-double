@@ -22,7 +22,7 @@ export default function Home() {
             <Link href="/live" className="text-gold/80 hover:text-gold underline">
               Play with friends →
             </Link>
-            <Link href="/history" className="text-gold/80 hover:text-gold underline">
+            <Link href="/archive" className="text-gold/80 hover:text-gold underline">
               Real Jeopardy! archive →
             </Link>
             <Link href="/boards" className="text-gold/80 hover:text-gold underline">

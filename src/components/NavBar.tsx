@@ -23,9 +23,9 @@ const TABS: { href: string; label: string }[] = [
   { href: "/", label: "Today" },
   { href: "/live", label: "Live" },
   { href: "/rankings", label: "Rankings" },
-  { href: "/history", label: "History" },
+  { href: "/archive", label: "Archive" },
   { href: "/friends", label: "Friends" },
-  { href: "/me", label: "Me" },
+  { href: "/history", label: "History" },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -130,8 +130,10 @@ export default function NavBar() {
             href="/settings"
             title="Settings"
             aria-label="Settings"
-            className={`text-lg leading-none ${
-              isActive(pathname, "/settings") ? "text-gold" : "text-blue-200/60 hover:text-gold"
+            className={`grid place-items-center h-8 w-8 rounded-sm border text-xl leading-none transition-colors ${
+              isActive(pathname, "/settings")
+                ? "border-gold/50 text-gold bg-shell-raised"
+                : "border-[color:var(--hairline)] text-blue-200/80 hover:text-gold hover:border-[color:var(--hairline-strong)]"
             }`}
           >
             ⚙
@@ -141,9 +143,9 @@ export default function NavBar() {
           ) : user ? (
             <>
               <Link
-                href="/me"
+                href="/history"
                 className={`truncate max-w-[12rem] underline-offset-2 hover:underline ${
-                  isActive(pathname, "/me") ? "text-gold" : "text-blue-200/85 hover:text-gold"
+                  isActive(pathname, "/history") ? "text-gold" : "text-blue-200/85 hover:text-gold"
                 }`}
               >
                 {user.displayName || user.email}
@@ -212,7 +214,7 @@ export default function NavBar() {
             {user ? (
               <>
                 <Link
-                  href="/me"
+                  href="/history"
                   onClick={() => setMenuOpen(false)}
                   className="px-2 py-2 text-blue-200/85 truncate max-w-[12rem]"
                 >

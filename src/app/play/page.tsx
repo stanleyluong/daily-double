@@ -15,7 +15,7 @@ const OPTIONS = [
     cta: "Play today",
   },
   {
-    href: "/history",
+    href: "/archive",
     badge: "Real history",
     title: "A Real Jeopardy! Episode",
     body: "Browse thousands of actual episodes by date or search by category (cats, opera, rivers…), then play that exact board.",

@@ -28,7 +28,7 @@ export default async function BoardsPage() {
           <p className="text-blue-200/70 mt-2 max-w-xl mx-auto">
             A fresh AI-written board for every day since launch. Replay any day and post your score.
             Looking for real Jeopardy! episodes instead?{" "}
-            <Link href="/history" className="text-gold/80 hover:text-gold underline">
+            <Link href="/archive" className="text-gold/80 hover:text-gold underline">
               Browse the archive →
             </Link>
           </p>

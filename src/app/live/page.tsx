@@ -323,7 +323,7 @@ export default function LiveEntryPage() {
               )}
               <p className="text-center text-[11px] text-blue-200/40 mt-2">
                 Want a real historical episode?{" "}
-                <Link href="/history" className="text-gold/70 hover:text-gold underline">
+                <Link href="/archive" className="text-gold/70 hover:text-gold underline">
                   Pick one from the archive
                 </Link>{" "}
                 and use its Play-with-friends button.
