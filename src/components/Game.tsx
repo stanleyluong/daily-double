@@ -1290,6 +1290,16 @@ export default function Game({ date }: { date?: string }) {
                   placeholder={`e.g. ${Math.min(maxWager, 1000)}`}
                   className="w-full text-center rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-2xl font-display tracking-wide placeholder:text-blue-200/30 mb-4"
                 />
+                {maxWager > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setWagerInput(String(maxWager))}
+                    title="Wager your entire score"
+                    className="block mx-auto mb-4 text-sm text-gold/80 hover:text-gold underline underline-offset-2"
+                  >
+                    {active.isFinal ? "Wager it all" : "True Daily Double — wager it all"} (${maxWager.toLocaleString()})
+                  </button>
+                )}
                 <button
                   type="submit"
                   className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
