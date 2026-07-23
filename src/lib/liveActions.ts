@@ -48,3 +48,8 @@ export const liveReportDrop = (user: User, gameId: string, droppedUid: string) =
   post(user, "disconnect", { gameId, droppedUid });
 export const liveRematch = (user: User, gameId: string) => post<{ code: string }>(user, "rematch", { gameId });
 export const liveEmote = (user: User, gameId: string, emoji: string) => post(user, "emote", { gameId, emoji });
+export const liveUpdateSettings = (
+  user: User,
+  gameId: string,
+  patch: { answerMs?: number; scoringMode?: "all_correct" | "winner_only"; pickMode?: "winner" | "alternating" | "loser" }
+) => post(user, "settings", { gameId, ...patch });

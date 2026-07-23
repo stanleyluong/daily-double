@@ -384,6 +384,38 @@ export async function joinGame(code: string, uid: string, name: string): Promise
   });
 }
 
+// Host-only, lobby-only: adjust the house rules before the game starts. Board
+// choice isn't editable here (it's already claimed/generated at creation) —
+// just the rules that don't depend on the board: timer, scoring, pick order.
+// Ranked games ignore this entirely (their rules are fixed server-side).
+export async function updateLobbySettings(
+  gameId: string,
+  uid: string,
+  patch: { answerMs?: number; scoringMode?: ScoringMode; pickMode?: PickMode }
+): Promise<void> {
+  const ref = gameRef(gameId);
+  await db().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error("no-game");
+    const g = toGame(gameId, snap.data()!);
+    if (g.hostUid !== uid) throw new Error("not-host");
+    if (g.status !== "lobby") throw new Error("bad-phase");
+    if (g.mode === "ranked") throw new Error("ranked-fixed");
+
+    const update: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
+    if (patch.answerMs !== undefined && ANSWER_MS_OPTIONS.includes(patch.answerMs as (typeof ANSWER_MS_OPTIONS)[number])) {
+      update.answerMs = patch.answerMs;
+    }
+    if (patch.scoringMode === "all_correct" || patch.scoringMode === "winner_only") {
+      update.scoringMode = patch.scoringMode;
+    }
+    if (patch.pickMode === "winner" || patch.pickMode === "alternating" || patch.pickMode === "loser") {
+      update.pickMode = patch.pickMode;
+    }
+    tx.update(ref, update);
+  });
+}
+
 export async function startGame(gameId: string, uid: string): Promise<void> {
   const ref = gameRef(gameId);
   await db().runTransaction(async (tx) => {

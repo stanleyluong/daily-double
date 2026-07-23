@@ -21,10 +21,17 @@ import {
   liveChat,
   liveRematch,
   liveEmote,
+  liveUpdateSettings,
 } from "@/lib/liveActions";
 import { formatMoney } from "@/lib/format";
 import { EMOTES } from "@/lib/liveTypes";
-import { DISCONNECT_MS, HEARTBEAT_MS, type LiveChatMessage, type LiveReveal } from "@/lib/liveTypes";
+import {
+  ANSWER_MS_OPTIONS,
+  DISCONNECT_MS,
+  HEARTBEAT_MS,
+  type LiveChatMessage,
+  type LiveReveal,
+} from "@/lib/liveTypes";
 import { isMuted, playSound, setMuted, type SoundName } from "@/lib/sounds";
 import { useFriends } from "@/components/FriendsProvider";
 import { inviteFriend } from "@/lib/friendsClient";
@@ -382,25 +389,34 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
               )}
             </div>
 
-            {/* House rules for this game */}
-            <div className="flex flex-wrap justify-center gap-2 mb-6 text-[11px]">
-              {[
-                `${game.answerMs / 1000}s to answer`,
-                game.scoringMode === "winner_only" ? "Only fastest scores" : "All correct score",
-                game.pickMode === "alternating"
-                  ? "Alternating picks"
-                  : game.pickMode === "loser"
-                    ? "Loser picks"
-                    : "Winner picks",
-              ].map((r) => (
-                <span
-                  key={r}
-                  className="px-2.5 py-1 rounded-full border border-[color:var(--hairline)] text-blue-200/70"
-                >
-                  {r}
-                </span>
-              ))}
-            </div>
+            {/* House rules for this game — host can edit while in the lobby
+                (ranked games skip straight to the read-only pills, since
+                their rules are fixed server-side). */}
+            {isHost && game.mode !== "ranked" ? (
+              <LobbySettingsEditor
+                game={game}
+                onChange={(patch) => run(() => liveUpdateSettings(user!, game.id, patch))}
+              />
+            ) : (
+              <div className="flex flex-wrap justify-center gap-2 mb-6 text-[11px]">
+                {[
+                  `${game.answerMs / 1000}s to answer`,
+                  game.scoringMode === "winner_only" ? "Only fastest scores" : "All correct score",
+                  game.pickMode === "alternating"
+                    ? "Alternating picks"
+                    : game.pickMode === "loser"
+                      ? "Loser picks"
+                      : "Winner picks",
+                ].map((r) => (
+                  <span
+                    key={r}
+                    className="px-2.5 py-1 rounded-full border border-[color:var(--hairline)] text-blue-200/70"
+                  >
+                    {r}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {isHost ? (
               <button
@@ -714,6 +730,85 @@ function EmotePop({
     <div className="fixed bottom-20 left-4 z-40 flex items-center gap-2 bg-shell border border-[color:var(--hairline)] rounded-full pl-2 pr-3 py-1.5 shadow-xl animate-pulse">
       <span className="text-2xl leading-none">{visible.emoji}</span>
       <span className="text-xs text-blue-200/60">{nameFor(visible.uid)}</span>
+    </div>
+  );
+}
+
+// Host-editable house rules, shown in place of the read-only pills while the
+// game is in the lobby. Each control fires an update immediately (no separate
+// save step) — every connected client sees the change live via the game doc.
+function LobbySettingsEditor({
+  game,
+  onChange,
+}: {
+  game: { answerMs: number; scoringMode: string; pickMode: string };
+  onChange: (patch: { answerMs?: number; scoringMode?: "all_correct" | "winner_only"; pickMode?: "winner" | "alternating" | "loser" }) => void;
+}) {
+  return (
+    <div className="mb-6 text-left space-y-3">
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-blue-200/40 mb-1 text-center">
+          Answer timer · {game.answerMs / 1000}s
+        </p>
+        <div className="grid grid-cols-5 gap-1">
+          {ANSWER_MS_OPTIONS.map((ms) => (
+            <button
+              key={ms}
+              onClick={() => onChange({ answerMs: ms })}
+              className={`rounded-sm py-1.5 text-xs font-display tracking-wide transition-colors ${
+                game.answerMs === ms ? "bg-gold text-board-deep" : "bg-shell-panel text-blue-200/70 hover:text-blue-100"
+              }`}
+            >
+              {ms / 1000}s
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-blue-200/40 mb-1 text-center">Scoring</p>
+        <div className="grid grid-cols-2 gap-1">
+          {(
+            [
+              ["all_correct", "All correct score"],
+              ["winner_only", "Only fastest scores"],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => onChange({ scoringMode: v })}
+              className={`rounded-sm py-1.5 text-xs font-display tracking-wide transition-colors ${
+                game.scoringMode === v ? "bg-gold text-board-deep" : "bg-shell-panel text-blue-200/70 hover:text-blue-100"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-blue-200/40 mb-1 text-center">Who picks next</p>
+        <div className="grid grid-cols-3 gap-1">
+          {(
+            [
+              ["winner", "Winner"],
+              ["alternating", "Alternating"],
+              ["loser", "Loser"],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => onChange({ pickMode: v })}
+              className={`rounded-sm py-1.5 text-xs font-display tracking-wide transition-colors ${
+                game.pickMode === v ? "bg-gold text-board-deep" : "bg-shell-panel text-blue-200/70 hover:text-blue-100"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
