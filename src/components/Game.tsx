@@ -6,7 +6,7 @@ import type { PublicBoard, PublicClue } from "@/lib/jeopardy";
 import type { PercentileStats, ScoreRow } from "@/lib/scores";
 import { formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
 import { readAutoAdvance, type AutoAdvance } from "@/lib/prefs";
-import { pauseSound, playMainTheme, playSound, preloadSounds, stopSound } from "@/lib/sounds";
+import { playSound, preloadSounds, stopSound } from "@/lib/sounds";
 import PercentileMeter from "@/components/PercentileMeter";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
@@ -40,9 +40,9 @@ interface ActiveClue extends PublicClue {
 
 const NAME_KEY = "daily-double-name";
 
-// Module scope (survives remounts): once the first user gesture has unblocked
-// audio, we don't need to re-arm the interaction listener.
-let mainThemeUnlocked = false;
+// Module scope (survives remounts): the main theme plays exactly once per page
+// load. A hard refresh reloads this module and resets it.
+let mainThemePlayed = false;
 
 const LOADING_MESSAGES = [
   "Summoning today's categories…",
@@ -550,10 +550,7 @@ export default function Game({ date }: { date?: string }) {
       return;
     }
     if (metaRef.current.startedAt === null) metaRef.current.startedAt = Date.now();
-    if (clue.dailyDouble) {
-      pauseSound("maintheme"); // duck the background theme for the Daily Double cue
-      playSound("dailydouble");
-    }
+    if (clue.dailyDouble) playSound("dailydouble");
     setActive({ ...clue, categoryTitle });
     setInput("");
     setWagerInput("");
@@ -570,7 +567,6 @@ export default function Game({ date }: { date?: string }) {
       return;
     }
     if (metaRef.current.startedAt === null) metaRef.current.startedAt = Date.now();
-    pauseSound("maintheme"); // duck the background theme for the Final music
     playSound("final");
     setActive({
       id: "final",
@@ -606,7 +602,6 @@ export default function Game({ date }: { date?: string }) {
 
   const closeClue = useCallback(() => {
     stopSound("final");
-    playMainTheme(); // resume the background theme when back on the board
     setActive(null);
     setVerdict(null);
     setReviewing(false);
@@ -679,24 +674,22 @@ export default function Game({ date }: { date?: string }) {
   // Main theme when the board first loads (best-effort — browsers may block
   // audio until the first interaction). It stops when you open a clue.
   useEffect(() => {
-    if (!board) return;
+    if (!board || mainThemePlayed) return;
     preloadSounds(); // start loading all sound files so the first cue isn't late
-    // Try to start the looping theme now (works if the user already interacted
-    // this session). Browsers block audio before any gesture, so also start it
-    // on the first interaction — once — then stop listening.
-    playMainTheme();
-    if (mainThemeUnlocked) return;
-    const arm = () => {
-      mainThemeUnlocked = true;
-      playMainTheme();
-      window.removeEventListener("pointerdown", arm);
-      window.removeEventListener("keydown", arm);
+    // Play the theme exactly once. Browsers block audio before a user gesture,
+    // so start it on the first interaction after load — then never again.
+    const startOnce = () => {
+      if (mainThemePlayed) return;
+      mainThemePlayed = true;
+      playSound("maintheme");
+      window.removeEventListener("pointerdown", startOnce);
+      window.removeEventListener("keydown", startOnce);
     };
-    window.addEventListener("pointerdown", arm);
-    window.addEventListener("keydown", arm);
+    window.addEventListener("pointerdown", startOnce);
+    window.addEventListener("keydown", startOnce);
     return () => {
-      window.removeEventListener("pointerdown", arm);
-      window.removeEventListener("keydown", arm);
+      window.removeEventListener("pointerdown", startOnce);
+      window.removeEventListener("keydown", startOnce);
     };
   }, [board]);
 
