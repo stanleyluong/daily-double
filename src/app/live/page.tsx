@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
 import { liveCreate, liveJoin } from "@/lib/liveActions";
+import { mmDecline, mmJoin, mmLeave, mmReady, mmStatus } from "@/lib/matchmakingActions";
+import type { MatchStatus } from "@/lib/matchmaking";
 
 export default function LiveEntryPage() {
   const { user, loading } = useAuth();
@@ -19,9 +21,92 @@ export default function LiveEntryPage() {
   const [pickMode, setPickMode] = useState<"winner" | "alternating" | "loser">("winner");
   const [cats, setCats] = useState<string[]>(["", "", "", "", "", ""]);
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
+  // Ranked matchmaking: idle (not searching) -> searching (queued, no match
+  // yet) -> matched (ready-check in progress or waiting on the opponent).
+  const [mmState, setMmState] = useState<"idle" | "searching" | "matched">("idle");
+  const [match, setMatch] = useState<MatchStatus | null>(null);
+  const [mmError, setMmError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const name = user?.displayName ?? "";
+
+  const stopPolling = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = null;
+  };
+
+  // Polls /api/matchmaking/status while searching or matched, redirecting
+  // into the game the instant both players are ready (gameCode appears).
+  useEffect(() => {
+    if (mmState === "idle" || !user) return;
+    const tick = async () => {
+      try {
+        const { queue, match: m } = await mmStatus(user);
+        if (queue.state === "idle") {
+          setMmState("idle");
+          setMatch(null);
+          return;
+        }
+        setMmState(queue.state === "matched" ? "matched" : "searching");
+        setMatch(m);
+        if (m?.gameCode) {
+          stopPolling();
+          router.push(`/live/${m.gameCode}`);
+        } else if (m?.status === "expired") {
+          setMmError("The other player didn't ready up in time. Search again?");
+          setMmState("idle");
+          setMatch(null);
+          stopPolling();
+        }
+      } catch {
+        /* transient — next tick retries */
+      }
+    };
+    tick();
+    pollRef.current = setInterval(tick, 2000);
+    return stopPolling;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mmState, user]);
+
+  useEffect(() => stopPolling, []);
+
+  const findMatch = async () => {
+    if (!user) return setShowAuth(true);
+    setMmError(null);
+    setMmState("searching");
+    try {
+      await mmJoin(user, name);
+    } catch (e) {
+      setMmError(e instanceof Error ? e.message : "Couldn't join the queue.");
+      setMmState("idle");
+    }
+  };
+
+  const cancelSearch = async () => {
+    if (!user) return;
+    stopPolling();
+    setMmState("idle");
+    setMatch(null);
+    await mmLeave(user).catch(() => {});
+  };
+
+  const readyUp = async () => {
+    if (!user || !match) return;
+    try {
+      await mmReady(user, match.matchId);
+    } catch (e) {
+      setMmError(e instanceof Error ? e.message : "Couldn't ready up.");
+    }
+  };
+
+  const declineReady = async () => {
+    if (!user || !match) return;
+    stopPolling();
+    await mmDecline(user, match.matchId).catch(() => {});
+    setMmState("idle");
+    setMatch(null);
+  };
 
   const start = async () => {
     if (!user) return setShowAuth(true);
@@ -130,17 +215,84 @@ export default function LiveEntryPage() {
             </p>
 
             {mode === "ranked" ? (
-              <div className="rounded-lg border border-gold/30 bg-board-deep/50 p-4">
-                <p className="text-xs uppercase tracking-wider text-gold/70 mb-2">Ranked rules · fixed</p>
-                <ul className="text-sm text-blue-100/90 space-y-1.5">
-                  <li>🎲 Fresh AI board — same for both players</li>
-                  <li>⏱️ 10 seconds to answer each clue</li>
-                  <li>⚡ Only the fastest correct answer scores</li>
-                  <li>🏆 Fastest correct answerer picks next</li>
-                </ul>
-                <p className="text-xs text-blue-200/50 mt-3">
-                  Every rated game uses these settings so the ladder stays fair.
-                </p>
+              <div className="space-y-4">
+                <div className="rounded-lg border border-gold/30 bg-board-deep/50 p-4">
+                  <p className="text-xs uppercase tracking-wider text-gold/70 mb-2">Ranked rules · fixed</p>
+                  <ul className="text-sm text-blue-100/90 space-y-1.5">
+                    <li>🎲 Fresh AI board — same for both players</li>
+                    <li>⏱️ 10 seconds to answer each clue</li>
+                    <li>⚡ Only the fastest correct answer scores</li>
+                    <li>🏆 Fastest correct answerer picks next</li>
+                  </ul>
+                  <p className="text-xs text-blue-200/50 mt-3">
+                    Every rated game uses these settings so the ladder stays fair.
+                  </p>
+                </div>
+
+                {mmState === "idle" && (
+                  <button
+                    onClick={findMatch}
+                    className="w-full font-display text-2xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-4 rounded-lg"
+                  >
+                    Find match
+                  </button>
+                )}
+
+                {mmState === "searching" && (
+                  <div className="text-center bg-board-deep/60 border border-board rounded-lg p-6">
+                    <div className="inline-block h-8 w-8 border-2 border-gold border-t-transparent rounded-full animate-spin mb-3" />
+                    <p className="font-display text-xl tracking-wide text-gold">Searching for an opponent…</p>
+                    <button
+                      onClick={cancelSearch}
+                      className="mt-4 text-sm text-blue-200/60 hover:text-blue-100 underline"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+
+                {mmState === "matched" && match && (
+                  <div className="text-center bg-board-deep/60 border border-gold/40 rounded-lg p-6">
+                    <p className="font-display text-2xl tracking-wide text-gold mb-1">Match found!</p>
+                    <p className="text-blue-100/80 mb-4">
+                      vs {match.players.find((p) => p.uid !== user?.uid)?.name ?? "opponent"}
+                    </p>
+                    <div className="flex justify-center gap-2 mb-4">
+                      {match.players.map((p) => (
+                        <span
+                          key={p.uid}
+                          className={`text-xs px-2.5 py-1 rounded-full border ${
+                            match.readyUids.includes(p.uid)
+                              ? "border-green-400/40 text-green-300"
+                              : "border-blue-300/20 text-blue-200/40"
+                          }`}
+                        >
+                          {p.uid === user?.uid ? "You" : p.name} {match.readyUids.includes(p.uid) ? "✓" : "…"}
+                        </span>
+                      ))}
+                    </div>
+                    {user && match.readyUids.includes(user.uid) ? (
+                      <p className="text-green-400/90 text-sm">Ready — waiting for the other player…</p>
+                    ) : (
+                      <div className="flex gap-3 justify-center">
+                        <button
+                          onClick={readyUp}
+                          className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-8 py-2 rounded"
+                        >
+                          Ready
+                        </button>
+                        <button
+                          onClick={declineReady}
+                          className="text-sm text-blue-200/60 hover:text-blue-100 underline"
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {mmError && <p className="text-center text-red-300 text-sm">{mmError}</p>}
               </div>
             ) : (
               <>
@@ -276,40 +428,40 @@ export default function LiveEntryPage() {
               </>
             )}
 
-            <button
-              onClick={start}
-              disabled={busy !== null}
-              className="w-full font-display text-2xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-4 rounded-lg disabled:opacity-50"
-            >
-              {busy === "create"
-                ? source === "custom"
-                  ? "Writing board…"
-                  : "Starting…"
-                : `Start ${mode === "ranked" ? "ranked " : ""}game`}
-            </button>
+            {mode === "normal" && (
+              <>
+                <button
+                  onClick={start}
+                  disabled={busy !== null}
+                  className="w-full font-display text-2xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-4 rounded-lg disabled:opacity-50"
+                >
+                  {busy === "create" ? (source === "custom" ? "Writing board…" : "Starting…") : "Start game"}
+                </button>
 
-            <div className="flex items-center gap-3 text-blue-200/40 text-sm">
-              <div className="h-px flex-1 bg-board" />
-              or join with a code
-              <div className="h-px flex-1 bg-board" />
-            </div>
+                <div className="flex items-center gap-3 text-blue-200/40 text-sm">
+                  <div className="h-px flex-1 bg-board" />
+                  or join with a code
+                  <div className="h-px flex-1 bg-board" />
+                </div>
 
-            <form onSubmit={join} className="flex gap-3">
-              <input
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="CODE"
-                maxLength={6}
-                className="flex-1 text-center tracking-[0.3em] font-display text-2xl rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-3 placeholder:text-blue-200/30 uppercase"
-              />
-              <button
-                type="submit"
-                disabled={busy !== null || !code.trim()}
-                className="font-display text-xl tracking-wider bg-board hover:bg-board-deep border border-gold/40 text-gold px-6 rounded-lg disabled:opacity-50"
-              >
-                {busy === "join" ? "…" : "Join"}
-              </button>
-            </form>
+                <form onSubmit={join} className="flex gap-3">
+                  <input
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    placeholder="CODE"
+                    maxLength={6}
+                    className="flex-1 text-center tracking-[0.3em] font-display text-2xl rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-3 placeholder:text-blue-200/30 uppercase"
+                  />
+                  <button
+                    type="submit"
+                    disabled={busy !== null || !code.trim()}
+                    className="font-display text-xl tracking-wider bg-board hover:bg-board-deep border border-gold/40 text-gold px-6 rounded-lg disabled:opacity-50"
+                  >
+                    {busy === "join" ? "…" : "Join"}
+                  </button>
+                </form>
+              </>
+            )}
 
             {error && <p className="text-center text-red-300 text-sm">{error}</p>}
           </div>

@@ -69,7 +69,12 @@ function randomCode(len = 5): string {
   return out;
 }
 
-async function pickBoardDate(): Promise<string> {
+// Exposed for matchmaking.ts, which builds a ranked game doc directly (both
+// players already matched/ready — no separate create+join flow needed) and
+// reuses this module's game-code allocation and board-pool claiming.
+export { gameRef, randomCode };
+
+export async function pickBoardDate(): Promise<string> {
   // A live game plays a random *past* board so it's a fresh challenge and
   // never collides with today's live-generated daily board. Falls back to
   // today only if nothing else exists yet.
@@ -137,7 +142,7 @@ const LIVE_BOARDS = "liveBoards";
 // caller then falls back to a past daily board). Generation happens ahead of
 // time — never in the request path, which can't fit board generation inside
 // Amplify's SSR timeout (see the pregenerate Lambda).
-async function claimLiveBoard(gameId: string): Promise<string | null> {
+export async function claimLiveBoard(gameId: string): Promise<string | null> {
   const snap = await db().collection(LIVE_BOARDS).where("usedBy", "==", null).limit(5).get();
   for (const doc of snap.docs) {
     const ok = await db().runTransaction(async (tx) => {
