@@ -6,6 +6,7 @@ import { useAuth } from "@/components/AuthProvider";
 import type { MyScoreRow } from "@/lib/scores";
 import type { PlayedRow } from "@/lib/played";
 import type { RankedStats } from "@/lib/liveTypes";
+import type { InProgressLive, InProgressSolo } from "@/lib/inProgress";
 import { formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
 
 const KIND_LABEL: Record<PlayedRow["kind"], string> = {
@@ -28,6 +29,8 @@ export default function MyScoresPage() {
   const [scores, setScores] = useState<MyScoreRow[] | null>(null);
   const [played, setPlayed] = useState<PlayedRow[] | null>(null);
   const [rank, setRank] = useState<RankedStats | null>(null);
+  const [progressSolo, setProgressSolo] = useState<InProgressSolo[] | null>(null);
+  const [progressLive, setProgressLive] = useState<InProgressLive[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -35,9 +38,21 @@ export default function MyScoresPage() {
     setScores(null);
     setPlayed(null);
     setRank(null);
+    setProgressSolo(null);
+    setProgressLive(null);
     setError(null);
     user.getIdToken().then((token) => {
       const auth = { Authorization: `Bearer ${token}` };
+      fetch("/api/my-inprogress", { headers: auth })
+        .then((res) => res.json())
+        .then((data) => {
+          setProgressSolo((data.solo as InProgressSolo[]) ?? []);
+          setProgressLive((data.live as InProgressLive[]) ?? []);
+        })
+        .catch(() => {
+          setProgressSolo([]);
+          setProgressLive([]);
+        });
       fetch("/api/my-scores", { headers: auth })
         .then((res) => res.json())
         .then((data) => {
@@ -100,6 +115,55 @@ export default function MyScoresPage() {
           </div>
         )}
 
+        {/* In progress — games started but not finished */}
+        {user &&
+          ((progressLive && progressLive.length > 0) || (progressSolo && progressSolo.length > 0)) && (
+            <section className="mb-8">
+              <h2 className="font-display text-2xl tracking-wide text-gold mb-3">In progress</h2>
+              <ul className="divide-y divide-board bg-board-deep/40 border border-gold/30 rounded-lg overflow-hidden">
+                {progressLive?.map((g) => (
+                  <li key={g.code} className="flex items-center gap-3 px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-blue-100 truncate">
+                        Live game <span className="font-mono text-gold">{g.code}</span>
+                      </p>
+                      <p className="text-sm text-blue-200/50">
+                        {g.players} player{g.players === 1 ? "" : "s"} · multiplayer
+                      </p>
+                    </div>
+                    <Link
+                      href={`/live/${g.code}`}
+                      className="font-display tracking-wide text-sm border border-gold/40 text-gold px-3 py-1.5 rounded hover:bg-board shrink-0"
+                    >
+                      Rejoin →
+                    </Link>
+                  </li>
+                ))}
+                {progressSolo?.map((s) => {
+                  const custom = s.boardKey.startsWith("custom-");
+                  const label = custom ? "Custom board" : formatBoardDate(s.boardKey);
+                  const href = custom ? `/custom/${s.boardKey.slice(7)}` : `/boards/${s.boardKey}`;
+                  return (
+                    <li key={s.boardKey} className="flex items-center gap-3 px-4 py-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-blue-100 truncate">{label}</p>
+                        <p className="text-sm text-blue-200/50">
+                          {s.answered} answered · {KIND_LABEL[s.kind]}
+                        </p>
+                      </div>
+                      <Link
+                        href={href}
+                        className="font-display tracking-wide text-sm border border-gold/40 text-gold px-3 py-1.5 rounded hover:bg-board shrink-0"
+                      >
+                        Resume →
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+
         {loading ? (
           <p className="text-center text-blue-200/50 py-16">Loading…</p>
         ) : !user ? (
@@ -115,6 +179,8 @@ export default function MyScoresPage() {
             No scores yet — play today&apos;s board and post one.
           </p>
         ) : (
+          <>
+          <h2 className="font-display text-2xl tracking-wide text-gold mb-3">Completed</h2>
           <ol className="divide-y divide-board bg-board-deep/40 border border-board rounded-lg overflow-hidden">
             {scores.map((row) => (
               <li key={row.date} className="flex items-center gap-3 px-4 py-3">
@@ -139,6 +205,7 @@ export default function MyScoresPage() {
               </li>
             ))}
           </ol>
+          </>
         )}
 
         {/* Played history */}
