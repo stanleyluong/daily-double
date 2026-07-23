@@ -759,7 +759,18 @@ export async function pauseForDisconnect(gameId: string, byUid: string, droppedU
 // others can tell they're still connected. Written server-side (Admin SDK)
 // because clients can't write the game doc.
 export async function heartbeat(gameId: string, uid: string): Promise<void> {
-  await gameRef(gameId).update({ [`lastSeen.${uid}`]: Date.now() });
+  const ref = gameRef(gameId);
+  await ref.update({ [`lastSeen.${uid}`]: Date.now() });
+  // Auto-resume: if this player's own drop was what paused the game, their
+  // heartbeat coming back is the reconnect signal — resume without making
+  // anyone click a button. Read-then-write outside the update above (a stale
+  // read just means we skip resuming this tick; the next heartbeat catches it).
+  const snap = await ref.get();
+  if (!snap.exists) return;
+  const g = toGame(gameId, snap.data()!);
+  if (g.paused && g.pausedReason === "disconnect" && g.pausedBy === uid) {
+    await resumeGame(gameId, uid).catch(() => {});
+  }
 }
 
 // Explicit leave: mark this player's heartbeat as stale immediately so the
