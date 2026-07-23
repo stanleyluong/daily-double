@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { topRanked } from "@/lib/ranking";
+import { topWeeklyScores, weekKeyFor } from "@/lib/scores";
+import { todayKey } from "@/lib/jeopardy";
+import { formatMoney } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +14,8 @@ export const metadata: Metadata = {
 
 export default async function RankingsPage() {
   const players = await topRanked(50).catch(() => []);
+  const weekKey = weekKeyFor(todayKey());
+  const weekly = await topWeeklyScores(weekKey, 20).catch(() => []);
 
   return (
     <div className="flex flex-col flex-1 min-h-screen">
@@ -52,6 +57,43 @@ export default async function RankingsPage() {
                 </li>
               );
             })}
+          </ol>
+        )}
+
+        <h2 className="font-display text-3xl tracking-wider text-gold text-center mt-14 mb-2">
+          This Week
+        </h2>
+        <p className="text-blue-200/60 text-center text-sm mb-6">
+          Total score from posted single-player games this week (resets Monday).
+        </p>
+        {weekly.length === 0 ? (
+          <p className="text-center text-blue-200/50 py-10">No scores posted yet this week.</p>
+        ) : (
+          <ol className="divide-y divide-board bg-board-deep/40 border border-board rounded-lg overflow-hidden">
+            {weekly.map((p, i) => (
+              <li key={p.uid} className="flex items-center gap-3 px-4 py-3">
+                <span
+                  className={`font-display text-xl w-8 text-right ${
+                    i === 0 ? "text-gold" : i < 3 ? "text-blue-100" : "text-blue-200/40"
+                  }`}
+                >
+                  {i + 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-blue-100 truncate">{p.name}</p>
+                  <p className="text-xs text-blue-200/50">
+                    {p.games} game{p.games === 1 ? "" : "s"} this week
+                  </p>
+                </div>
+                <span
+                  className={`font-display text-2xl tracking-wide tabular-nums ${
+                    p.score < 0 ? "text-red-400" : "text-gold"
+                  }`}
+                >
+                  {formatMoney(p.score)}
+                </span>
+              </li>
+            ))}
           </ol>
         )}
       </main>

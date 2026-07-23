@@ -3,6 +3,18 @@ import { db } from "@/lib/firebaseAdmin";
 
 const BOARDS = "jeopardyBoards";
 
+// ISO-week key (Mon–Sun), e.g. "2026-W30" — used to bucket the weekly
+// leaderboard so it resets each week rather than needing a rolling-window
+// query (which would require a collectionGroup index across every user).
+export function weekKeyFor(dateKey: string): string {
+  const d = new Date(`${dateKey}T12:00:00Z`);
+  const day = (d.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+  d.setUTCDate(d.getUTCDate() - day + 3); // Thursday of this ISO week
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round((d.getTime() - firstThursday.getTime()) / (7 * 86400000));
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
 export interface ScoreRow {
   name: string;
   score: number;
@@ -65,6 +77,39 @@ export async function submitScore(date: string, entry: NewScore): Promise<void> 
       tx.update(boardRef, { topScore: { name: entry.name, score: entry.score } });
     }
   });
+
+  // Best-effort weekly aggregate (outside the transaction — it's a rollup,
+  // not part of the anti-duplicate guarantee above).
+  const weekRef = db().collection("weeklyScores").doc(weekKeyFor(date)).collection("entries").doc(uid);
+  await weekRef
+    .set(
+      { name: entry.name, score: FieldValue.increment(entry.score), games: FieldValue.increment(1) },
+      { merge: true }
+    )
+    .catch(() => {});
+}
+
+export interface WeeklyRow {
+  uid: string;
+  name: string;
+  score: number;
+  games: number;
+}
+
+export async function topWeeklyScores(weekKey: string, limit = 20): Promise<WeeklyRow[]> {
+  const snap = await db()
+    .collection("weeklyScores")
+    .doc(weekKey)
+    .collection("entries")
+    .orderBy("score", "desc")
+    .limit(limit)
+    .get();
+  return snap.docs.map((d) => ({
+    uid: d.id,
+    name: String(d.get("name") ?? "Player"),
+    score: Number(d.get("score") ?? 0),
+    games: Number(d.get("games") ?? 0),
+  }));
 }
 
 export async function hasSubmittedScore(date: string, uid: string): Promise<boolean> {
