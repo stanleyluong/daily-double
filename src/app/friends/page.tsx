@@ -1,21 +1,50 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { useDm } from "@/components/DmProvider";
 import { useFriends } from "@/components/FriendsProvider";
 import AuthModal from "@/components/AuthModal";
-import { acceptFriend, addFriend, declineFriend } from "@/lib/friendsClient";
+import { acceptFriend, addFriend, declineFriend, inviteFriend } from "@/lib/friendsClient";
+import { liveCreate, liveJoin } from "@/lib/liveActions";
 
 export default function FriendsPage() {
   const { user, loading } = useAuth();
   const { data, refresh } = useFriends();
   const { unread: dmUnread, open: openDm } = useDm();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [gameBusy, setGameBusy] = useState<string | null>(null);
   const [showAuth, setShowAuth] = useState(false);
+
+  // Jump straight into a friend's open lobby — no code needed.
+  const joinLobby = async (friendUid: string, gameCode: string) => {
+    if (!user) return;
+    setGameBusy(`join:${friendUid}`);
+    try {
+      await liveJoin(user, gameCode, user.displayName ?? "");
+      router.push(`/live/${gameCode}`);
+    } finally {
+      setGameBusy(null);
+    }
+  };
+
+  // Start a fresh game and invite this friend to it.
+  const inviteToGame = async (friendUid: string) => {
+    if (!user) return;
+    setGameBusy(`invite:${friendUid}`);
+    try {
+      const { code } = await liveCreate(user, user.displayName ?? "");
+      await inviteFriend(user, friendUid, code);
+      router.push(`/live/${code}`);
+    } finally {
+      setGameBusy(null);
+    }
+  };
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,7 +165,10 @@ export default function FriendsPage() {
                         className={`h-2.5 w-2.5 rounded-full ${f.online ? "bg-green-400" : "bg-blue-200/25"}`}
                         title={f.online ? "Online" : "Offline"}
                       />
-                      <span className="flex-1 min-w-0 truncate text-blue-100">{f.name}</span>
+                      <span className="flex-1 min-w-0 truncate text-blue-100">
+                        {f.name}
+                        {f.game && <span className="ml-1.5 text-[10px] text-green-400 align-middle">● in a lobby</span>}
+                      </span>
                       {f.h2h && f.h2h.games > 0 && (
                         <span className="text-xs text-blue-200/50 shrink-0" title="Head-to-head record">
                           {f.h2h.myWins}–{f.h2h.theirWins}
@@ -154,12 +186,32 @@ export default function FriendsPage() {
                       >
                         Message
                       </button>
+                      {f.game ? (
+                        <button
+                          onClick={() => joinLobby(f.uid, f.game!.code)}
+                          disabled={gameBusy === `join:${f.uid}`}
+                          className="font-display tracking-wide bg-gold hover:bg-gold-soft text-board-deep px-3 py-1 rounded text-sm disabled:opacity-60"
+                        >
+                          {gameBusy === `join:${f.uid}` ? "…" : "Join"}
+                        </button>
+                      ) : (
+                        f.online && (
+                          <button
+                            onClick={() => inviteToGame(f.uid)}
+                            disabled={gameBusy === `invite:${f.uid}`}
+                            className="font-display tracking-wide border border-gold/40 text-gold px-3 py-1 rounded text-sm hover:bg-board disabled:opacity-60"
+                          >
+                            {gameBusy === `invite:${f.uid}` ? "…" : "Invite"}
+                          </button>
+                        )
+                      )}
                     </li>
                   ))}
                 </ul>
               )}
               <p className="text-xs text-blue-200/40 mt-3">
-                Invite friends to a game from the lobby after you start one.
+                Friends with an open lobby show a Join button. Otherwise, Invite starts a new game and sends them
+                straight to it.
               </p>
             </div>
           </div>

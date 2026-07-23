@@ -76,7 +76,6 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
   const [submittedClue, setSubmittedClue] = useState<string | null>(null);
   const [seenClueId, setSeenClueId] = useState<string | null | undefined>(undefined);
   const [toast, setToast] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [muted, setMutedState] = useState(() => (typeof window !== "undefined" ? isMuted() : false));
   const [viewBoard, setViewBoard] = useState(false); // non-picker chose to watch the board
   const resolvedFiredFor = useRef<string | null>(null);
@@ -300,16 +299,6 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
   const nameFor = (id: string) => game.players.find((p) => p.uid === id)?.name ?? "Player";
   const round = board?.rounds[game.roundIndex];
 
-  const share = async () => {
-    try {
-      await navigator.clipboard.writeText(game.id);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard unavailable */
-    }
-  };
-
   return (
     <div className="flex flex-col flex-1 min-h-screen">
       <main className="flex-1 w-full max-w-4xl mx-auto px-4 py-8">
@@ -367,15 +356,9 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
         {game.phase === "lobby" && (
           <div className="bg-board-deep/60 border border-board rounded-lg p-8 text-center max-w-md mx-auto">
             <p className="kicker text-gold font-mono text-xs uppercase tracking-widest mb-2">Waiting to start</p>
-            <p className="text-blue-200/70 mb-4">Share this code so friends can join:</p>
-            <button
-              onClick={share}
-              className="font-display text-5xl tracking-[0.3em] text-gold mb-1 hover:opacity-80"
-              title="Copy code"
-            >
-              {game.id}
-            </button>
-            <p className="text-xs text-blue-200/40 mb-6 h-4">{copied ? "Copied!" : "Tap to copy"}</p>
+            <p className="text-blue-200/70 mb-6">
+              Invite a friend from the sidebar — they&apos;ll see a Join button the moment they&apos;re here.
+            </p>
 
             <div className="space-y-2 mb-6">
               {game.players.map((p) => (

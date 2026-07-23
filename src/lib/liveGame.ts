@@ -32,6 +32,7 @@ import {
 import { applyRankedResults } from "@/lib/ranking";
 import { markPlayed, pickUnplayedHistorical } from "@/lib/played";
 import { recordHeadToHead } from "@/lib/headToHead";
+import { setPresenceGame } from "@/lib/friends";
 
 export { ANSWER_MS, COUNTDOWN_MS } from "@/lib/liveTypes";
 export type { LiveGame, LiveMode, LivePhase, LivePlayer, LiveReveal, RevealResult } from "@/lib/liveTypes";
@@ -275,6 +276,7 @@ export async function createGame(
         const boardId = await claimLiveBoard(code);
         if (boardId) await gameRef(code).update({ boardId });
       }
+      setPresenceGame(uid, code, "lobby").catch(() => {});
       return code;
     } catch {
       // code taken — try another
@@ -364,12 +366,13 @@ export async function createRematch(gameId: string, hostUid: string): Promise<st
   // above for the common case; a genuine race is astronomically unlikely
   // given the host is a single browser tab).
   await gameRef(gameId).update({ rematchCode: newCode, updatedAt: FieldValue.serverTimestamp() });
+  await Promise.all(old.playerUids.map((u) => setPresenceGame(u, newCode, "lobby")));
   return newCode;
 }
 
 export async function joinGame(code: string, uid: string, name: string): Promise<LiveGame> {
   const ref = gameRef(code);
-  return db().runTransaction(async (tx) => {
+  const result = await db().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new Error("no-game");
     const game = toGame(code, snap.data()!);
@@ -387,6 +390,8 @@ export async function joinGame(code: string, uid: string, name: string): Promise
     });
     return { ...game, players: [...game.players, player], playerUids: [...game.playerUids, uid] };
   });
+  setPresenceGame(uid, code, "lobby").catch(() => {});
+  return result;
 }
 
 // Host-only, lobby-only: adjust the house rules before the game starts. Board
@@ -447,6 +452,8 @@ export async function startGame(gameId: string, uid: string): Promise<void> {
   if (g) {
     const key = g.boardId ?? g.boardDate;
     await Promise.all(g.playerUids.map((u) => markPlayed(u, key).catch(() => {})));
+    // No longer a joinable lobby — clear the friends-list Join affordance.
+    await Promise.all(g.playerUids.map((u) => setPresenceGame(u, gameId, "in_progress")));
   }
 }
 
@@ -822,12 +829,16 @@ export async function heartbeat(gameId: string, uid: string): Promise<void> {
   if (g.paused && g.pausedReason === "disconnect" && g.pausedBy === uid) {
     await resumeGame(gameId, uid).catch(() => {});
   }
+  // Self-heal the friends-list "current game" indicator each tick, in case an
+  // earlier explicit sync (join/start) was missed.
+  setPresenceGame(uid, gameId, g.status === "lobby" ? "lobby" : "in_progress").catch(() => {});
 }
 
 // Explicit leave: mark this player's heartbeat as stale immediately so the
 // others detect the drop right away (rather than waiting out the timeout).
 export async function leaveGame(gameId: string, uid: string): Promise<void> {
   await gameRef(gameId).update({ [`lastSeen.${uid}`]: 0 });
+  await setPresenceGame(uid, null, null);
 }
 
 export async function resumeGame(gameId: string, uid: string): Promise<void> {
@@ -953,6 +964,9 @@ export async function continueGame(gameId: string, uid: string): Promise<void> {
     await recordHeadToHead(game.players, finalScores).catch((e) =>
       console.error("head-to-head record failed:", e)
     );
+  }
+  if (phase === "finished") {
+    await Promise.all(game.playerUids.map((u) => setPresenceGame(u, null, null)));
   }
 }
 

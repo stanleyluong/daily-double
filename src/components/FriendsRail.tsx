@@ -13,7 +13,7 @@ import {
   declineFriend,
   inviteFriend,
 } from "@/lib/friendsClient";
-import { liveCreate } from "@/lib/liveActions";
+import { liveCreate, liveJoin } from "@/lib/liveActions";
 
 // Persistent right-hand social panel (docked on desktop, like the League
 // client). Shows game invites, friend requests, and the full friends list
@@ -54,6 +54,15 @@ export default function FriendsRail() {
       if (!user) return;
       router.push(`/live/${gameCode}`);
       await clearInvite(user, fromUid);
+    });
+
+  // Jump straight into a friend's open lobby — no code needed, since the
+  // friends list already shows who has one.
+  const joinLobby = (friendUid: string, gameCode: string) =>
+    act(`joinlobby:${friendUid}`, async () => {
+      if (!user) return;
+      await liveJoin(user, gameCode, user.displayName ?? "");
+      router.push(`/live/${gameCode}`);
     });
 
   const add = async (e: React.FormEvent) => {
@@ -162,7 +171,9 @@ export default function FriendsRail() {
                 name={f.name}
                 online
                 unread={unread[f.uid] ?? 0}
-                busy={busy === `invite:${f.uid}`}
+                busy={busy === `invite:${f.uid}` || busy === `joinlobby:${f.uid}`}
+                lobbyCode={f.game?.code}
+                onJoin={f.game ? () => joinLobby(f.uid, f.game!.code) : undefined}
                 onInvite={() => inviteToGame(f.uid)}
                 onMessage={() => openDm(f.uid, f.name)}
               />
@@ -234,6 +245,8 @@ function FriendRow({
   online,
   unread = 0,
   busy,
+  lobbyCode,
+  onJoin,
   onInvite,
   onMessage,
 }: {
@@ -241,11 +254,13 @@ function FriendRow({
   online: boolean;
   unread?: number;
   busy?: boolean;
+  lobbyCode?: string;
+  onJoin?: () => void;
   onInvite?: () => void;
   onMessage?: () => void;
 }) {
   return (
-    <div className="group flex items-center gap-2.5 px-2 py-1.5 rounded-sm hover:bg-shell-panel">
+    <div className="group flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-shell-panel">
       <span
         className={`h-2 w-2 rounded-full shrink-0 ${online ? "bg-online" : "bg-blue-200/25"}`}
         aria-hidden
@@ -258,6 +273,7 @@ function FriendRow({
         title={`Message ${name}`}
       >
         {name}
+        {lobbyCode && <span className="ml-1.5 text-[10px] text-online align-middle">● in a lobby</span>}
       </button>
       {unread > 0 && (
         <span className="min-w-[1.1rem] h-[1.1rem] px-1 grid place-items-center rounded-full bg-gold text-board-deep text-[11px] font-bold">
@@ -268,18 +284,28 @@ function FriendRow({
         <button
           onClick={onMessage}
           title={`Message ${name}`}
-          className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-blue-200/50 hover:text-gold transition-opacity"
+          className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-blue-200/50 hover:text-gold transition-opacity shrink-0"
           aria-label={`Message ${name}`}
         >
           💬
+        </button>
+      )}
+      {onJoin && (
+        <button
+          onClick={onJoin}
+          disabled={busy}
+          title="Join their lobby"
+          className="shrink-0 text-xs font-display tracking-wide text-board-deep bg-gold hover:bg-gold-soft rounded-sm px-2 py-0.5 disabled:opacity-60 transition-opacity"
+        >
+          {busy ? "…" : "Join"}
         </button>
       )}
       {online && onInvite && (
         <button
           onClick={onInvite}
           disabled={busy}
-          title="Invite to a game"
-          className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-xs font-display tracking-wide text-gold border border-gold/40 rounded-sm px-2 py-0.5 hover:bg-shell-raised disabled:opacity-60 transition-opacity"
+          title="Start a new game and invite them"
+          className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 text-xs font-display tracking-wide text-gold border border-gold/40 rounded-sm px-2 py-0.5 hover:bg-shell-raised disabled:opacity-60 transition-opacity"
         >
           {busy ? "…" : "Invite"}
         </button>

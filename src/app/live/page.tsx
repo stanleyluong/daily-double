@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
-import { liveCreate, liveJoin } from "@/lib/liveActions";
+import { liveCreate } from "@/lib/liveActions";
 import { mmDecline, mmJoin, mmLeave, mmReady, mmStatus } from "@/lib/matchmakingActions";
 import type { MatchStatus } from "@/lib/matchmaking";
 
@@ -13,7 +13,6 @@ export default function LiveEntryPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [showAuth, setShowAuth] = useState(false);
-  const [code, setCode] = useState("");
   const [mode, setMode] = useState<"normal" | "ranked">("normal");
   const [source, setSource] = useState<"pool" | "unplayed" | "custom">("pool");
   const [answerMs, setAnswerMs] = useState(10000);
@@ -138,22 +137,6 @@ export default function LiveEntryPage() {
       router.push(`/live/${code}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't start a game.");
-      setBusy(null);
-    }
-  };
-
-  const join = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return setShowAuth(true);
-    const trimmed = code.trim().toUpperCase();
-    if (!trimmed) return;
-    setBusy("join");
-    setError(null);
-    try {
-      const { code: joined } = await liveJoin(user, trimmed, name);
-      router.push(`/live/${joined}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't join that game.");
       setBusy(null);
     }
   };
@@ -429,39 +412,22 @@ export default function LiveEntryPage() {
             )}
 
             {mode === "normal" && (
-              <>
-                <button
-                  onClick={start}
-                  disabled={busy !== null}
-                  className="w-full font-display text-2xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-4 rounded-lg disabled:opacity-50"
-                >
-                  {busy === "create" ? (source === "custom" ? "Writing board…" : "Starting…") : "Start game"}
-                </button>
-
-                <div className="flex items-center gap-3 text-blue-200/40 text-sm">
-                  <div className="h-px flex-1 bg-board" />
-                  or join with a code
-                  <div className="h-px flex-1 bg-board" />
-                </div>
-
-                <form onSubmit={join} className="flex gap-3">
-                  <input
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.toUpperCase())}
-                    placeholder="CODE"
-                    maxLength={6}
-                    className="flex-1 text-center tracking-[0.3em] font-display text-2xl rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-3 placeholder:text-blue-200/30 uppercase"
-                  />
-                  <button
-                    type="submit"
-                    disabled={busy !== null || !code.trim()}
-                    className="font-display text-xl tracking-wider bg-board hover:bg-board-deep border border-gold/40 text-gold px-6 rounded-lg disabled:opacity-50"
-                  >
-                    {busy === "join" ? "…" : "Join"}
-                  </button>
-                </form>
-              </>
+              <button
+                onClick={start}
+                disabled={busy !== null}
+                className="w-full font-display text-2xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-4 rounded-lg disabled:opacity-50"
+              >
+                {busy === "create" ? (source === "custom" ? "Writing board…" : "Starting…") : "Start game"}
+              </button>
             )}
+
+            <p className="text-center text-xs text-blue-200/40">
+              Want to bring a friend in?{" "}
+              <Link href="/friends" className="text-gold/70 hover:text-gold underline">
+                Invite them from your friends list
+              </Link>
+              , or accept their invite when they start one.
+            </p>
 
             {error && <p className="text-center text-red-300 text-sm">{error}</p>}
           </div>

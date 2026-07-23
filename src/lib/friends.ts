@@ -21,11 +21,29 @@ export async function touchPresence(uid: string, name: string): Promise<void> {
   );
 }
 
+// Piggybacks "what live game is this account currently in" onto the same
+// presence doc, so the friends list can offer a direct Join button instead of
+// requiring a shared code. status is null to clear it (left a game, or it
+// finished) — only "lobby" is ever surfaced to friends as joinable.
+export async function setPresenceGame(
+  uid: string,
+  gameCode: string | null,
+  status: "lobby" | "in_progress" | null
+): Promise<void> {
+  await db()
+    .collection("presence")
+    .doc(uid)
+    .set({ gameCode: gameCode, gameStatus: gameCode ? status : null }, { merge: true })
+    .catch(() => {});
+}
+
 export interface FriendRow {
   uid: string;
   name: string;
   online: boolean;
   h2h?: { games: number; myWins: number; theirWins: number; ties: number };
+  // Present only when the friend currently has an open (joinable) lobby.
+  game?: { code: string };
 }
 export interface RequestRow {
   fromUid: string;
@@ -54,11 +72,14 @@ export async function listFriendsData(
   const friends: FriendRow[] = friendsSnap.docs.map((d, i) => {
     const last = (presence[i].get("lastActive") as number | undefined) ?? 0;
     const rec = h2h[d.id];
+    const gameCode = presence[i].get("gameCode") as string | undefined;
+    const gameStatus = presence[i].get("gameStatus") as string | undefined;
     return {
       uid: d.id,
       name: (presence[i].get("name") as string | undefined) ?? (d.get("name") as string) ?? "Player",
       online: now - last < ONLINE_MS,
       ...(rec ? { h2h: { games: rec.games, myWins: rec.myWins, theirWins: rec.theirWins, ties: rec.ties } } : {}),
+      ...(gameCode && gameStatus === "lobby" ? { game: { code: gameCode } } : {}),
     };
   });
   friends.sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
