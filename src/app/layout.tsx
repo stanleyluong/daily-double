@@ -48,6 +48,15 @@ export const metadata: Metadata = {
     title: "Daily Double — AI-generated Jeopardy",
     description: DESCRIPTION,
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Daily Double",
+  },
+};
+
+export const viewport = {
+  themeColor: "#05081f",
 };
 
 export default function RootLayout({
