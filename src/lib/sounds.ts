@@ -71,8 +71,55 @@ const RECIPES: Record<SoundName, () => void> = {
   pick: () => tone(880, 0, 0.1, "triangle", 0.14),
 };
 
+// Optional audio-file overrides. Drop matching files in public/sounds/ and
+// they play instead of the synthesized version; anything missing silently
+// falls back to synth. Files you add are yours to source/license.
+//   tick    — countdown tick        go      — clue opens
+//   correct — right answer          wrong   — wrong answer / buzzer
+//   timeup  — time's up             pick    — selecting a clue
+//   win     — you win               lose    — you lose
+const FILES: Record<SoundName, string> = {
+  tick: "/sounds/tick.mp3",
+  go: "/sounds/go.mp3",
+  correct: "/sounds/correct.mp3",
+  wrong: "/sounds/wrong.mp3",
+  timeup: "/sounds/timeup.mp3",
+  win: "/sounds/win.mp3",
+  lose: "/sounds/lose.mp3",
+  pick: "/sounds/pick.mp3",
+};
+
+// Per-sound element cache. undefined = not tried yet; null = load failed (use
+// synth); element = created (may still be loading). Lazily created on first
+// play, so there's at most one request per sound and none if a sound is unused.
+const els: Partial<Record<SoundName, HTMLAudioElement | null>> = {};
+
+function getEl(name: SoundName): HTMLAudioElement | null {
+  if (name in els) return els[name] ?? null;
+  if (typeof window === "undefined" || typeof Audio === "undefined") {
+    els[name] = null;
+    return null;
+  }
+  const a = new Audio(FILES[name]);
+  a.preload = "auto";
+  a.addEventListener("error", () => { els[name] = null; }, { once: true }); // missing file -> synth
+  els[name] = a;
+  return a;
+}
+
 export function playSound(name: SoundName): void {
   if (isMuted()) return;
+  const a = getEl(name);
+  // readyState >= 2 (HAVE_CURRENT_DATA) means the file is ready to play now.
+  if (a && a.readyState >= 2) {
+    try {
+      a.currentTime = 0;
+      void a.play();
+      return;
+    } catch {
+      /* fall through to synth */
+    }
+  }
   try {
     RECIPES[name]();
   } catch {
