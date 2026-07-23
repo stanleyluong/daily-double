@@ -9,6 +9,11 @@ export const FINAL_WAGER_MS = 25000; // time to place a Final Jeopardy wager
 export const FINAL_ANSWER_MS = 30000; // Final Jeopardy answer window
 export const MAX_PLAYERS = 3;
 
+// Quick in-game reactions. Fixed set (not free text) — cheap to moderate and
+// fast to tap during a live round.
+export const EMOTES = ["👏", "😂", "😱", "🔥", "🤔", "😭"] as const;
+export type Emote = (typeof EMOTES)[number];
+
 export type LiveMode = "normal" | "ranked";
 // "final_wager" collects Final Jeopardy wagers; the final clue itself reuses
 // the "active" phase with currentClueId === "final".
@@ -124,6 +129,9 @@ export interface LiveGame {
   // rematch copies it as the new game's starting value. {} for a standalone
   // game with no rematch history.
   seriesWins: Record<string, number>;
+  // Most recent quick reaction. Last-write-wins (no history) — clients show it
+  // briefly and clear it locally on a timer; not re-fetched from Firestore.
+  emote: { uid: string; emoji: string; at: number } | null;
 }
 
 // Per-player ranked ladder stats, stored at rankedStats/{uid}. Updated only

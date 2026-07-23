@@ -16,6 +16,7 @@ import {
   COUNTDOWN_MS,
   FINAL_ANSWER_MS,
   FINAL_WAGER_MS,
+  EMOTES,
   MAX_CHAT,
   MAX_PLAYERS,
   type LiveChatMessage,
@@ -125,6 +126,7 @@ function toGame(id: string, data: FirebaseFirestore.DocumentData): LiveGame {
     rated: data.rated ?? false,
     rematchCode: data.rematchCode ?? null,
     seriesWins: data.seriesWins ?? {},
+    emote: data.emote ?? null,
   };
 }
 
@@ -258,6 +260,7 @@ export async function createGame(
         rated: false,
         rematchCode: null,
         seriesWins: {},
+        emote: null,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -335,6 +338,7 @@ export async function createRematch(gameId: string, hostUid: string): Promise<st
         rated: false,
         rematchCode: null,
         seriesWins: old.seriesWins, // carry the running tally forward
+        emote: null,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -475,6 +479,16 @@ export async function postChat(gameId: string, uid: string, text: string): Promi
     const chat = [...g.chat, msg].slice(-MAX_CHAT);
     tx.update(ref, { chat, updatedAt: FieldValue.serverTimestamp() });
   });
+}
+
+export async function sendEmote(gameId: string, uid: string, emoji: string): Promise<void> {
+  if (!(EMOTES as readonly string[]).includes(emoji)) throw new Error("bad-emote");
+  const ref = gameRef(gameId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("no-game");
+  const g = toGame(gameId, snap.data()!);
+  if (!g.playerUids.includes(uid)) throw new Error("not-a-player");
+  await ref.update({ emote: { uid, emoji, at: Date.now() } });
 }
 
 export async function pickClue(gameId: string, uid: string, clueId: string): Promise<void> {

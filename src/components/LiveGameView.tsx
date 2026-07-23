@@ -20,8 +20,10 @@ import {
   liveSubmit,
   liveChat,
   liveRematch,
+  liveEmote,
 } from "@/lib/liveActions";
 import { formatMoney } from "@/lib/format";
+import { EMOTES } from "@/lib/liveTypes";
 import { DISCONNECT_MS, HEARTBEAT_MS, type LiveChatMessage, type LiveReveal } from "@/lib/liveTypes";
 import { isMuted, playSound, setMuted, type SoundName } from "@/lib/sounds";
 import { useFriends } from "@/components/FriendsProvider";
@@ -558,7 +560,11 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
       )}
 
       {isMember && user && (
-        <GameChat chat={game.chat} uid={uid} onSend={(text) => liveChat(user, game.id, text)} />
+        <>
+          <GameChat chat={game.chat} uid={uid} onSend={(text) => liveChat(user, game.id, text)} />
+          <EmoteBar onSend={(emoji) => liveEmote(user, game.id, emoji)} />
+          <EmotePop emote={game.emote} nameFor={nameFor} />
+        </>
       )}
     </div>
   );
@@ -658,6 +664,56 @@ function GameChat({
           Send
         </button>
       </form>
+    </div>
+  );
+}
+
+// Quick-reaction bar — a fixed row of tappable emoji, cheap and fast during a
+// live round (no text entry, no moderation surface).
+function EmoteBar({ onSend }: { onSend: (emoji: string) => void }) {
+  return (
+    <div className="fixed bottom-4 left-4 z-40 flex gap-1 bg-shell border border-[color:var(--hairline)] rounded-full px-2 py-1.5 shadow-xl">
+      {EMOTES.map((e) => (
+        <button
+          key={e}
+          onClick={() => onSend(e)}
+          className="text-xl leading-none w-8 h-8 grid place-items-center rounded-full hover:bg-shell-panel transition-colors"
+          title="Send a reaction"
+        >
+          {e}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Floats the most recent reaction briefly, then clears itself locally — the
+// game doc holds only the latest emote (last-write-wins), so this component
+// tracks its own "at" to know when a new one has arrived vs. re-rendering
+// the same one.
+function EmotePop({
+  emote,
+  nameFor,
+}: {
+  emote: { uid: string; emoji: string; at: number } | null;
+  nameFor: (id: string) => string;
+}) {
+  const [visible, setVisible] = useState<{ uid: string; emoji: string; at: number } | null>(null);
+  const lastAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!emote || emote.at === lastAtRef.current) return;
+    lastAtRef.current = emote.at;
+    setVisible(emote);
+    const t = setTimeout(() => setVisible(null), 2200);
+    return () => clearTimeout(t);
+  }, [emote]);
+
+  if (!visible) return null;
+  return (
+    <div className="fixed bottom-20 left-4 z-40 flex items-center gap-2 bg-shell border border-[color:var(--hairline)] rounded-full pl-2 pr-3 py-1.5 shadow-xl animate-pulse">
+      <span className="text-2xl leading-none">{visible.emoji}</span>
+      <span className="text-xs text-blue-200/60">{nameFor(visible.uid)}</span>
     </div>
   );
 }

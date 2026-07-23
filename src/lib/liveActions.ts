@@ -47,3 +47,4 @@ export const liveLeave = (user: User, gameId: string) => post(user, "leave", { g
 export const liveReportDrop = (user: User, gameId: string, droppedUid: string) =>
   post(user, "disconnect", { gameId, droppedUid });
 export const liveRematch = (user: User, gameId: string) => post<{ code: string }>(user, "rematch", { gameId });
+export const liveEmote = (user: User, gameId: string, emoji: string) => post(user, "emote", { gameId, emoji });
