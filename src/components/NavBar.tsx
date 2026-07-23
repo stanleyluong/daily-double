@@ -108,36 +108,42 @@ export default function NavBar() {
 
         {/* Account — desktop */}
         <div className="hidden md:flex items-center gap-3 text-sm">
-          <button
-            onClick={toggleMusic}
-            title={musicMuted ? "Music off — click to turn on" : "Music on — click to turn off"}
-            aria-label={musicMuted ? "Turn music on" : "Turn music off"}
-            className={`text-lg leading-none ${
-              musicMuted ? "text-blue-200/25 hover:text-blue-200/50" : "text-blue-200/60 hover:text-gold"
-            }`}
-          >
-            🎵
-          </button>
-          <button
-            onClick={toggleMute}
-            title={muted ? "Sound effects off — click to turn on" : "Sound effects on — click to turn off"}
-            aria-label={muted ? "Unmute sound effects" : "Mute sound effects"}
-            className="text-lg leading-none text-blue-200/60 hover:text-gold"
-          >
-            {muted ? "🔇" : "🔊"}
-          </button>
-          <Link
-            href="/settings"
-            title="Settings"
-            aria-label="Settings"
-            className={`grid place-items-center h-8 w-8 rounded-sm border text-xl leading-none transition-colors ${
-              isActive(pathname, "/settings")
-                ? "border-gold/50 text-gold bg-shell-raised"
-                : "border-[color:var(--hairline)] text-blue-200/80 hover:text-gold hover:border-[color:var(--hairline-strong)]"
-            }`}
-          >
-            ⚙
-          </Link>
+          {/* Music / sound / settings, grouped in one bordered control so they read
+              as a unit and don't get lost as bare small glyphs. */}
+          <div className="flex items-center rounded-sm border border-[color:var(--hairline)] overflow-hidden">
+            <button
+              onClick={toggleMusic}
+              title={musicMuted ? "Music off — click to turn on" : "Music on — click to turn off"}
+              aria-label={musicMuted ? "Turn music on" : "Turn music off"}
+              className={`grid place-items-center h-9 w-9 text-2xl leading-none transition-colors ${
+                musicMuted ? "text-blue-200/25 hover:text-blue-200/50" : "text-blue-200/75 hover:text-gold"
+              } hover:bg-shell-raised`}
+            >
+              🎵
+            </button>
+            <span className="h-5 w-px bg-[color:var(--hairline)]" aria-hidden />
+            <button
+              onClick={toggleMute}
+              title={muted ? "Sound effects off — click to turn on" : "Sound effects on — click to turn off"}
+              aria-label={muted ? "Unmute sound effects" : "Mute sound effects"}
+              className="grid place-items-center h-9 w-9 text-2xl leading-none text-blue-200/75 hover:text-gold hover:bg-shell-raised transition-colors"
+            >
+              {muted ? "🔇" : "🔊"}
+            </button>
+            <span className="h-5 w-px bg-[color:var(--hairline)]" aria-hidden />
+            <Link
+              href="/settings"
+              title="Settings"
+              aria-label="Settings"
+              className={`grid place-items-center h-9 w-9 text-2xl leading-none transition-colors ${
+                isActive(pathname, "/settings")
+                  ? "text-gold bg-shell-raised"
+                  : "text-blue-200/75 hover:text-gold hover:bg-shell-raised"
+              }`}
+            >
+              ⚙
+            </Link>
+          </div>
           {loading ? (
             <div className="h-8 w-24" aria-hidden />
           ) : user ? (
