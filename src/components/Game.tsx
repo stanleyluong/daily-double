@@ -846,7 +846,7 @@ export default function Game({ date }: { date?: string }) {
               className="hidden sm:inline-flex items-center gap-1 text-xs text-blue-200/50 hover:text-gold transition-colors"
             >
               <span aria-hidden>⌨</span>
-              <span className="underline underline-offset-2">Shortcuts</span>
+              <span className="underline underline-offset-2">Keyboard Shortcuts</span>
             </button>
           </div>
         </div>

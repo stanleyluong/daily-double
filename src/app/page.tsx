@@ -43,7 +43,7 @@ export default function Home() {
           </Link>
           <span aria-hidden>·</span>
           <Link href="/shortcuts" className="hover:text-gold underline underline-offset-2">
-            Shortcuts
+            Keyboard Shortcuts
           </Link>
           <span aria-hidden>·</span>
           <Link href="/terms" className="hover:text-gold underline underline-offset-2">
