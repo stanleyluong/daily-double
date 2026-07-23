@@ -483,6 +483,14 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
               setSubmittedClue(clue);
               await run(() => liveSubmit(user, game.id, clue, input.trim()));
             }}
+            onPass={async () => {
+              // A Pass is an empty submission — it counts you as answered so the
+              // clue can resolve early instead of waiting out the timer.
+              if (!user || !game.currentClueId) return;
+              const clue = game.currentClueId;
+              setSubmittedClue(clue);
+              await run(() => liveSubmit(user, game.id, clue, ""));
+            }}
             nameFor={nameFor}
           />
         )}
@@ -783,6 +791,7 @@ function ActiveClue({
   setInput,
   submittedClue,
   onSubmit,
+  onPass,
   nameFor,
 }: {
   game: {
@@ -803,6 +812,7 @@ function ActiveClue({
   setInput: (v: string) => void;
   submittedClue: string | null;
   onSubmit: () => void;
+  onPass: () => void;
   nameFor: (id: string) => string;
 }) {
   const isFinal = game.currentClueId === "final";
@@ -866,6 +876,14 @@ function ActiveClue({
             className="flex-1 rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-lg placeholder:text-blue-200/40"
           />
           <button
+            type="button"
+            onClick={onPass}
+            title="Skip the timer — you don't know it"
+            className="font-display text-xl tracking-wide text-blue-200/70 hover:text-blue-100 px-4 rounded border border-blue-300/20 hover:border-blue-300/40"
+          >
+            Pass
+          </button>
+          <button
             type="submit"
             disabled={!input.trim()}
             className="font-display text-xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 rounded disabled:opacity-50"
@@ -876,7 +894,7 @@ function ActiveClue({
       )}
 
       {subPhase === "answering" && iSubmitted && (
-        <p className="text-center text-green-400/90 py-3">Answer locked in — waiting for the buzzer…</p>
+        <p className="text-center text-green-400/90 py-3">Locked in — waiting for the buzzer…</p>
       )}
 
       {subPhase === "timeup" && (
@@ -935,6 +953,11 @@ function Reveal({
               <span className={p.uid === uid ? "text-gold" : "text-blue-100"}>{nameFor(p.uid)}</span>
               <span className="flex items-center gap-2">
                 <span className="text-blue-200/50 text-sm truncate max-w-[10rem]">{res?.answer ?? "—"}</span>
+                {res?.ms !== undefined && (
+                  <span className="text-blue-200/30 text-xs tabular-nums shrink-0">
+                    {(res.ms / 1000).toFixed(1)}s
+                  </span>
+                )}
                 <span
                   className={
                     outcome === "correct"

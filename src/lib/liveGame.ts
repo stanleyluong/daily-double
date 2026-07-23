@@ -554,10 +554,19 @@ export async function resolveClue(gameId: string): Promise<void> {
           results[uid] = { answer: j?.answer ?? null, outcome: win ? "correct" : "wrong", wager: win ? wager : -wager };
         }
       } else {
+        // Time from the answer window opening (countdown end) to submission.
+        const answerStart = claim.countdownEndsAt;
         for (const uid of g.playerUids) results[uid] = { answer: null, outcome: "none" };
         for (const j of judged) {
-          results[j.uid] = { answer: j.answer, outcome: j.correct ? "correct" : "wrong" };
-          if (!j.correct) continue;
+          const ms =
+            answerStart !== null && Number.isFinite(j.at) ? Math.max(0, j.at - answerStart) : undefined;
+          const passed = !j.answer; // empty submission = a Pass
+          results[j.uid] = {
+            answer: j.answer || null,
+            outcome: passed ? "none" : j.correct ? "correct" : "wrong",
+            ...(ms !== undefined ? { ms } : {}),
+          };
+          if (passed || !j.correct) continue;
           // Scoring house rule: everyone correct scores, or only the fastest.
           const earnsMoney = g.scoringMode !== "winner_only" || j.uid === fastestCorrectUid;
           if (earnsMoney) {
@@ -565,7 +574,7 @@ export async function resolveClue(gameId: string): Promise<void> {
           } else {
             // Right but too slow under winner-only rules — mark it as +$0 so the
             // reveal shows they were correct without awarding money.
-            results[j.uid] = { answer: j.answer, outcome: "correct", wager: 0 };
+            results[j.uid] = { answer: j.answer, outcome: "correct", wager: 0, ...(ms !== undefined ? { ms } : {}) };
           }
         }
       }

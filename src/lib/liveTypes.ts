@@ -53,6 +53,7 @@ export interface RevealResult {
   answer: string | null;
   outcome: "correct" | "wrong" | "none";
   wager?: number; // Final Jeopardy only: the ± applied to this player's score
+  ms?: number; // grid clues: time from the answer window opening to submission
 }
 
 export interface LiveReveal {
