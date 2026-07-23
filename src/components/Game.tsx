@@ -126,6 +126,8 @@ export default function Game({ date }: { date?: string }) {
   // One appeal per game: whether it's been spent, and whether one is in flight.
   const [appealUsed, setAppealUsed] = useState(false);
   const [appealing, setAppealing] = useState(false);
+  // Keyboard-shortcuts overlay (opened by the ⌨ button or the "?" hotkey).
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState(0);
   const [copied, setCopied] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -593,6 +595,23 @@ export default function Game({ date }: { date?: string }) {
     }
   }, [active, focusedCell]);
 
+  // "?" toggles the keyboard-shortcuts overlay (not while a clue is open or
+  // while typing an answer); Escape closes it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+      if (e.key === "?" && !typing && !active) {
+        e.preventDefault();
+        setShowShortcuts((s) => !s);
+      } else if (e.key === "Escape") {
+        setShowShortcuts(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active]);
+
   const advanceRound = () => {
     if (!board) return;
     const next = roundIndex + 1;
@@ -819,7 +838,17 @@ export default function Game({ date }: { date?: string }) {
       <div className="flex items-baseline justify-between mb-4 px-1">
         <div>
           <p className="text-sm text-blue-200/70">{formatBoardDate(board.date)}</p>
-          <p className="font-display tracking-wide text-gold text-sm uppercase">{round.name}</p>
+          <div className="flex items-center gap-3">
+            <p className="font-display tracking-wide text-gold text-sm uppercase">{round.name}</p>
+            <button
+              onClick={() => setShowShortcuts(true)}
+              title="Keyboard shortcuts (press ?)"
+              className="hidden sm:inline-flex items-center gap-1 text-xs text-blue-200/50 hover:text-gold transition-colors"
+            >
+              <span aria-hidden>⌨</span>
+              <span className="underline underline-offset-2">Shortcuts</span>
+            </button>
+          </div>
         </div>
         <p className="font-display text-3xl tracking-wide">
           <span className={displayedScore < 0 ? "text-red-400" : "text-gold"}>
@@ -1348,6 +1377,51 @@ export default function Game({ date }: { date?: string }) {
           state meant it silently had nowhere to render mid-game. */}
       {showAuthModal && (
         <AuthModal onClose={() => setShowAuthModal(false)} message={authModalMessage} />
+      )}
+
+      {/* Keyboard shortcuts overlay */}
+      {showShortcuts && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setShowShortcuts(false)}
+        >
+          <div
+            className="w-full max-w-md bg-board rounded-lg shadow-2xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-display text-2xl tracking-wide text-gold">Keyboard Shortcuts</p>
+              <button
+                onClick={() => setShowShortcuts(false)}
+                aria-label="Close"
+                className="text-blue-200/50 hover:text-blue-100 text-xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <ul className="divide-y divide-board-deep text-sm">
+              {[
+                ["Tab", "Focus the board"],
+                ["← ↑ → ↓", "Move between clues"],
+                ["Enter / Space", "Open the focused clue (or review it)"],
+                ["Enter", "Submit your answer"],
+                ["Esc Esc", "No idea — reveal the answer"],
+                ["Enter / Esc", "Close and return to the board"],
+                ["?", "Show this list"],
+              ].map(([keys, desc]) => (
+                <li key={desc} className="flex items-center justify-between gap-4 py-2.5">
+                  <kbd className="font-mono text-gold bg-board-deep border border-blue-300/20 rounded px-2 py-1 text-xs shrink-0">
+                    {keys}
+                  </kbd>
+                  <span className="text-blue-100/80 text-right">{desc}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[11px] text-blue-200/40 mt-4 text-center">
+              Arrow navigation is for the desktop board. On phones, tap a clue.
+            </p>
+          </div>
+        </div>
       )}
 
       {toast && (
