@@ -7,7 +7,7 @@ import type { MyScoreRow } from "@/lib/scores";
 import type { PlayedRow } from "@/lib/played";
 import type { RankedStats } from "@/lib/liveTypes";
 import type { InProgressLive, InProgressSolo } from "@/lib/inProgress";
-import { formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
+import { computeStreak, formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
 
 const KIND_LABEL: Record<PlayedRow["kind"], string> = {
   daily: "AI daily",
@@ -83,6 +83,13 @@ export default function MyScoresPage() {
     return { games, best, avg, correct, accuracy };
   })();
 
+  // Daily streak — consecutive days with a posted score.
+  const streak = (() => {
+    if (!scores || scores.length === 0) return null;
+    const today = new Date().toISOString().slice(0, 10);
+    return computeStreak(scores.map((s) => s.date), today);
+  })();
+
   return (
     <div className="flex flex-col flex-1 min-h-screen">
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 md:px-8 py-10">
@@ -94,6 +101,18 @@ export default function MyScoresPage() {
             ← Today&apos;s board
           </Link>
         </header>
+
+        {/* Streak */}
+        {user && streak && streak.current > 0 && (
+          <p className="text-center mb-4">
+            <span className="font-display text-xl tracking-wide text-gold">
+              🔥 {streak.current}-day streak
+            </span>
+            {streak.longest > streak.current && (
+              <span className="text-blue-200/50 text-sm ml-2">(best: {streak.longest})</span>
+            )}
+          </p>
+        )}
 
         {/* Stat tiles */}
         {user && stats && (
