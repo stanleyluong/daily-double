@@ -839,7 +839,10 @@ export default function Game({ date }: { date?: string }) {
         <div>
           <p className="text-sm text-blue-200/70">{formatBoardDate(board.date)}</p>
           <div className="flex items-center gap-3">
-            <p className="font-display tracking-wide text-gold text-sm uppercase">{round.name}</p>
+            <p className="font-display tracking-wide text-gold text-sm uppercase">
+              Round {roundIndex + 1}
+              {roundIndex > 0 && " · double values"}
+            </p>
             <button
               onClick={() => setShowShortcuts(true)}
               title="Keyboard shortcuts (press ?)"
