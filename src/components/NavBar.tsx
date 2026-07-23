@@ -9,7 +9,14 @@ import { useAuth } from "@/components/AuthProvider";
 import { useDm } from "@/components/DmProvider";
 import { useFriends } from "@/components/FriendsProvider";
 import AuthModal from "@/components/AuthModal";
-import { isMuted, setMuted as storeMuted, stopAllSounds } from "@/lib/sounds";
+import {
+  isMuted,
+  isMusicMuted,
+  restartMainTheme,
+  setMuted as storeMuted,
+  setMusicMuted as storeMusicMuted,
+  stopSound,
+} from "@/lib/sounds";
 
 // Primary destinations, shown as tabs in the top bar (Hextech-client style).
 const TABS: { href: string; label: string }[] = [
@@ -32,13 +39,23 @@ export default function NavBar() {
   const pathname = usePathname() ?? "/";
   const [modalOpen, setModalOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [muted, setMuted] = useState(false);
-  useEffect(() => setMuted(isMuted()), []);
+  const [muted, setMuted] = useState(false); // sound effects
+  const [musicMuted, setMusicMuted] = useState(false); // main theme
+  useEffect(() => {
+    setMuted(isMuted());
+    setMusicMuted(isMusicMuted());
+  }, []);
   const toggleMute = () => {
     const next = !muted;
     setMuted(next);
     storeMuted(next);
-    if (next) stopAllSounds();
+  };
+  const toggleMusic = () => {
+    const next = !musicMuted;
+    setMusicMuted(next);
+    storeMusicMuted(next);
+    if (next) stopSound("maintheme");
+    else restartMainTheme();
   };
 
   // Badge count for pending invites + friend requests + unread DMs (draws the
@@ -92,9 +109,19 @@ export default function NavBar() {
         {/* Account — desktop */}
         <div className="hidden md:flex items-center gap-3 text-sm">
           <button
+            onClick={toggleMusic}
+            title={musicMuted ? "Music off — click to turn on" : "Music on — click to turn off"}
+            aria-label={musicMuted ? "Turn music on" : "Turn music off"}
+            className={`text-lg leading-none ${
+              musicMuted ? "text-blue-200/25 hover:text-blue-200/50" : "text-blue-200/60 hover:text-gold"
+            }`}
+          >
+            🎵
+          </button>
+          <button
             onClick={toggleMute}
-            title={muted ? "Unmute sounds" : "Mute sounds"}
-            aria-label={muted ? "Unmute sounds" : "Mute sounds"}
+            title={muted ? "Sound effects off — click to turn on" : "Sound effects on — click to turn off"}
+            aria-label={muted ? "Unmute sound effects" : "Mute sound effects"}
             className="text-lg leading-none text-blue-200/60 hover:text-gold"
           >
             {muted ? "🔇" : "🔊"}
@@ -169,6 +196,12 @@ export default function NavBar() {
               </Link>
             );
           })}
+          <button
+            onClick={toggleMusic}
+            className="text-left px-2 py-2.5 font-display text-xl tracking-wide text-blue-200/70"
+          >
+            {musicMuted ? "🎵 Music off" : "🎵 Music on"}
+          </button>
           <button
             onClick={toggleMute}
             className="text-left px-2 py-2.5 font-display text-xl tracking-wide text-blue-200/70"

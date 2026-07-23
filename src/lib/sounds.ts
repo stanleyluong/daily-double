@@ -18,6 +18,9 @@ function getCtx(): AudioContext | null {
   return ctx;
 }
 
+// Sound effects (correct/wrong/daily-double/final cues, etc.) and the main
+// theme (music) mute independently, so you can silence the music but keep the
+// effects, or vice versa.
 export function isMuted(): boolean {
   if (typeof window === "undefined") return false;
   return localStorage.getItem(MUTE_KEY) === "1";
@@ -26,6 +29,18 @@ export function isMuted(): boolean {
 export function setMuted(v: boolean): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(MUTE_KEY, v ? "1" : "0");
+}
+
+const MUSIC_MUTE_KEY = "daily-double-music-muted";
+
+export function isMusicMuted(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(MUSIC_MUTE_KEY) === "1";
+}
+
+export function setMusicMuted(v: boolean): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(MUSIC_MUTE_KEY, v ? "1" : "0");
 }
 
 type OscType = "sine" | "square" | "sawtooth" | "triangle";
@@ -129,7 +144,8 @@ function getEl(name: SoundName): HTMLAudioElement | null {
 }
 
 export function playSound(name: SoundName): void {
-  if (isMuted()) return;
+  // The main theme is music; everything else is a sound effect.
+  if (name === "maintheme" ? isMusicMuted() : isMuted()) return;
   const a = getEl(name);
   // readyState >= 2 (HAVE_CURRENT_DATA) means the file is ready to play now.
   if (a && a.readyState >= 2) {
@@ -148,8 +164,52 @@ export function playSound(name: SoundName): void {
   }
 }
 
-// Stop a playing file (e.g. the main theme when a clue opens, or the final
-// music when it resolves). No-op for synth sounds — those are short one-shots.
+// Start (or resume) the looping main theme, but only if it's paused — so
+// calling it on every navigation/gesture never restarts music that's already
+// playing. Loading happens without a gesture; this play() needs one.
+export function playMainTheme(): void {
+  if (isMusicMuted()) return;
+  // Only resume an element that already exists (Game creates it via
+  // preloadSounds on the board), so this never spawns the theme off the board.
+  const a = els["maintheme"];
+  if (a && a.paused) {
+    try {
+      void a.play();
+    } catch {
+      /* blocked until a gesture — caller retries on interaction */
+    }
+  }
+}
+
+// Restart the theme from the top (used by the music toggle turning back on).
+export function restartMainTheme(): void {
+  if (isMusicMuted()) return;
+  const a = els["maintheme"];
+  if (a) {
+    try {
+      a.currentTime = 0;
+      void a.play();
+    } catch {
+      /* no-op */
+    }
+  }
+}
+
+// Pause (keep position) — used to duck the main theme during Daily Double /
+// Final so their music doesn't overlap; playMainTheme() resumes it.
+export function pauseSound(name: SoundName): void {
+  const a = els[name];
+  if (a) {
+    try {
+      a.pause();
+    } catch {
+      /* no-op */
+    }
+  }
+}
+
+// Stop a playing file (e.g. the final music when it resolves). No-op for synth
+// sounds — those are short one-shots.
 export function stopSound(name: SoundName): void {
   const a = els[name];
   if (a) {
