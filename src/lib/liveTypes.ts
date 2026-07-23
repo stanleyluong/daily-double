@@ -115,6 +115,15 @@ export interface LiveGame {
   // Ranked: set once when a ranked game finishes and ratings are applied, so
   // the rating update can't double-apply.
   rated: boolean;
+  // Set by the host once a rematch is created from this (finished) game —
+  // every connected client sees it via the live snapshot and can jump to the
+  // new game without a fresh invite.
+  rematchCode: string | null;
+  // Best-of-series tally, carried forward across a chain of rematches: each
+  // finish increments the sole winner's count on this field before the next
+  // rematch copies it as the new game's starting value. {} for a standalone
+  // game with no rematch history.
+  seriesWins: Record<string, number>;
 }
 
 // Per-player ranked ladder stats, stored at rankedStats/{uid}. Updated only

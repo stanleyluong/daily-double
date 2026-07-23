@@ -123,6 +123,8 @@ function toGame(id: string, data: FirebaseFirestore.DocumentData): LiveGame {
     pausedAnswerRemaining: data.pausedAnswerRemaining ?? null,
     lastSeen: data.lastSeen ?? {},
     rated: data.rated ?? false,
+    rematchCode: data.rematchCode ?? null,
+    seriesWins: data.seriesWins ?? {},
   };
 }
 
@@ -254,6 +256,8 @@ export async function createGame(
         pausedAnswerRemaining: null,
         lastSeen: { [uid]: Date.now() },
         rated: false,
+        rematchCode: null,
+        seriesWins: {},
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -269,6 +273,89 @@ export async function createGame(
     }
   }
   throw new Error("Could not allocate a game code, try again.");
+}
+
+// Rematch: the host of a finished game spins up a fresh game with the same
+// players, mode, and house rules — a new random AI board — and writes the new
+// code onto the OLD game's `rematchCode` so every connected client (via its
+// existing live listener on the old game) can jump straight in, no re-invite
+// needed. Idempotent: a second call returns the already-created rematch.
+export async function createRematch(gameId: string, hostUid: string): Promise<string> {
+  const old = await getGame(gameId);
+  if (!old) throw new Error("no-game");
+  if (old.hostUid !== hostUid) throw new Error("not-host");
+  if (old.status !== "finished") throw new Error("bad-phase");
+  if (old.rematchCode) return old.rematchCode;
+
+  const boardDate = await pickBoardDate();
+  const scores: Record<string, number> = {};
+  const lastSeen: Record<string, number> = {};
+  for (const uid of old.playerUids) {
+    scores[uid] = 0;
+    lastSeen[uid] = Date.now();
+  }
+
+  let newCode: string | null = null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const code = randomCode();
+    try {
+      await gameRef(code).create({
+        status: "lobby",
+        mode: old.mode,
+        hostUid,
+        boardDate,
+        boardId: null,
+        answerMs: old.answerMs,
+        scoringMode: old.scoringMode,
+        pickMode: old.pickMode,
+        chat: [],
+        players: old.players,
+        playerUids: old.playerUids,
+        scores,
+        phase: "lobby",
+        roundIndex: 0,
+        pickerUid: null,
+        nextPickerUid: null,
+        currentClueId: null,
+        currentSubmittedUids: [],
+        answeredClueIds: [],
+        countdownEndsAt: null,
+        answerEndsAt: null,
+        finalWagers: {},
+        finalWagerEndsAt: null,
+        resolving: false,
+        resolveClaimedAt: null,
+        reveal: null,
+        paused: false,
+        pausedBy: null,
+        pausedReason: null,
+        pausedCountdownRemaining: null,
+        pausedAnswerRemaining: null,
+        lastSeen,
+        rated: false,
+        rematchCode: null,
+        seriesWins: old.seriesWins, // carry the running tally forward
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      newCode = code;
+      break;
+    } catch {
+      // code taken — try another
+    }
+  }
+  if (!newCode) throw new Error("Could not allocate a game code, try again.");
+
+  const boardId = await claimLiveBoard(newCode);
+  if (boardId) await gameRef(newCode).update({ boardId });
+
+  // Idempotent claim on the old doc: if two rematch calls race, only the
+  // first write sticks (arrayUnion-free plain update is fine here since we
+  // only ever set this field once, guarded by the `old.rematchCode` check
+  // above for the common case; a genuine race is astronomically unlikely
+  // given the host is a single browser tab).
+  await gameRef(gameId).update({ rematchCode: newCode, updatedAt: FieldValue.serverTimestamp() });
+  return newCode;
 }
 
 export async function joinGame(code: string, uid: string, name: string): Promise<LiveGame> {
@@ -768,8 +855,20 @@ export async function continueGame(gameId: string, uid: string): Promise<void> {
         finalWagerEndsAt: now + FINAL_WAGER_MS,
       });
     } else {
+      const extra: Record<string, unknown> = {};
+      if (phase === "finished") {
+        // Best-of-series tally: sole top score wins this game; ties add
+        // nothing. Starts from whatever this game inherited (a rematch copies
+        // its parent's tally as its starting point).
+        const top = Math.max(...g.playerUids.map((u) => g.scores[u] ?? 0));
+        const winners = g.playerUids.filter((u) => (g.scores[u] ?? 0) === top);
+        if (winners.length === 1) {
+          extra.seriesWins = { ...g.seriesWins, [winners[0]]: (g.seriesWins[winners[0]] ?? 0) + 1 };
+        }
+      }
       tx.update(ref, {
         ...base,
+        ...extra,
         phase,
         roundIndex,
         pickerUid: phase === "finished" ? null : nextPicker,

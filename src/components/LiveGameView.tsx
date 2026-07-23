@@ -19,6 +19,7 @@ import {
   liveStartFinal,
   liveSubmit,
   liveChat,
+  liveRematch,
 } from "@/lib/liveActions";
 import { formatMoney } from "@/lib/format";
 import { DISCONNECT_MS, HEARTBEAT_MS, type LiveChatMessage, type LiveReveal } from "@/lib/liveTypes";
@@ -507,7 +508,15 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
         )}
 
         {/* Finished */}
-        {game.phase === "finished" && <Finished game={game} uid={uid} nameFor={nameFor} />}
+        {game.phase === "finished" && (
+          <Finished
+            game={game}
+            uid={uid}
+            nameFor={nameFor}
+            isHost={uid === game.hostUid}
+            onRematch={() => run(() => liveRematch(user!, game.id))}
+          />
+        )}
       </main>
 
       {/* Pause overlay — any player can resume */}
@@ -1093,14 +1102,26 @@ function Finished({
   game,
   uid,
   nameFor,
+  isHost,
+  onRematch,
 }: {
-  game: { players: { uid: string; name: string }[]; scores: Record<string, number> };
+  game: {
+    players: { uid: string; name: string }[];
+    scores: Record<string, number>;
+    rematchCode?: string | null;
+    seriesWins?: Record<string, number>;
+  };
   uid: string | null;
   nameFor: (id: string) => string;
+  isHost: boolean;
+  onRematch: () => void;
 }) {
   const ranked = [...game.players].sort((a, b) => (game.scores[b.uid] ?? 0) - (game.scores[a.uid] ?? 0));
   const winner = ranked[0];
   const iWon = winner?.uid === uid;
+  const seriesWins = game.seriesWins ?? {};
+  const seriesTotal = Object.values(seriesWins).reduce((n, w) => n + w, 0);
+  const [rematching, setRematching] = useState(false);
   return (
     <div className="max-w-md mx-auto bg-board-deep/60 border border-board rounded-lg p-8 text-center">
       <p className="kicker text-gold font-mono text-xs uppercase tracking-widest mb-2">Final</p>
@@ -1120,12 +1141,42 @@ function Finished({
           </div>
         ))}
       </div>
+
+      {/* Best-of-series tally, if this game is part of a rematch chain */}
+      {seriesTotal > 0 && (
+        <p className="text-sm text-blue-200/60 mb-4">
+          Series: {ranked.map((p) => `${nameFor(p.uid)} ${seriesWins[p.uid] ?? 0}`).join(" – ")}
+        </p>
+      )}
+
+      {game.rematchCode ? (
+        <Link
+          href={`/live/${game.rematchCode}`}
+          className="block font-display text-lg tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded mb-3"
+        >
+          Rematch ready — join {game.rematchCode} →
+        </Link>
+      ) : (
+        isHost && (
+          <button
+            onClick={() => {
+              setRematching(true);
+              onRematch();
+            }}
+            disabled={rematching}
+            className="block w-full font-display text-lg tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded mb-3 disabled:opacity-60"
+          >
+            {rematching ? "Starting rematch…" : "⟳ Rematch — same players & settings"}
+          </button>
+        )
+      )}
+
       <div className="flex gap-3 justify-center">
         <Link
           href="/live"
-          className="font-display text-lg tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2 rounded"
+          className="font-display text-lg tracking-wider border border-gold/40 text-gold px-6 py-2 rounded"
         >
-          Play again
+          New game
         </Link>
         <Link href="/" className="font-display text-lg tracking-wider border border-gold/40 text-gold px-6 py-2 rounded">
           Solo board

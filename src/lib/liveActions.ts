@@ -46,3 +46,4 @@ export const liveHeartbeat = (user: User, gameId: string) => post(user, "heartbe
 export const liveLeave = (user: User, gameId: string) => post(user, "leave", { gameId });
 export const liveReportDrop = (user: User, gameId: string, droppedUid: string) =>
   post(user, "disconnect", { gameId, droppedUid });
+export const liveRematch = (user: User, gameId: string) => post<{ code: string }>(user, "rematch", { gameId });
