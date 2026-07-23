@@ -1142,13 +1142,29 @@ export default function Game({ date }: { date?: string }) {
               {counts.correct} right · {counts.wrong} wrong · {counts.passed} passed
               {metaRef.current.durationMs ? ` · ${formatDuration(metaRef.current.durationMs)}` : ""}
             </p>
-            <button
-              onClick={shareResult}
-              className="inline-flex items-center gap-2 font-display tracking-wider bg-board hover:bg-board-deep border border-gold/40 text-gold px-5 py-2 rounded mb-5"
-            >
-              {copied ? "Copied to clipboard!" : "Share result"}
-              {!copied && <span aria-hidden>📋</span>}
-            </button>
+            <div className="flex items-center justify-center gap-3 mb-5 flex-wrap">
+              <button
+                onClick={shareResult}
+                className="inline-flex items-center gap-2 font-display tracking-wider bg-board hover:bg-board-deep border border-gold/40 text-gold px-5 py-2 rounded"
+              >
+                {copied ? "Copied to clipboard!" : "Share result"}
+                {!copied && <span aria-hidden>📋</span>}
+              </button>
+              <a
+                href={`/api/share-image?${new URLSearchParams({
+                  date: board.date,
+                  score: String(displayedScore),
+                  correct: String(counts.correct),
+                  wrong: String(counts.wrong),
+                  passed: String(counts.passed),
+                }).toString()}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 font-display tracking-wider bg-board hover:bg-board-deep border border-gold/40 text-gold px-5 py-2 rounded"
+              >
+                Share image <span aria-hidden>🖼</span>
+              </a>
+            </div>
           </div>
 
           {!submitted && !skippedSubmit && (
