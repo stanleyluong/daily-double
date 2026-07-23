@@ -7,7 +7,7 @@ import {
   roundTopValue,
   todayKey,
 } from "@/lib/jeopardy";
-import { getAnsweredClue, recordAnsweredClue, scoreSoFar } from "@/lib/answers";
+import { getAnsweredClue, incrementClueStat, recordAnsweredClue, scoreSoFar } from "@/lib/answers";
 import { markPlayed } from "@/lib/played";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { authAdmin } from "@/lib/firebaseAdmin";
@@ -139,6 +139,7 @@ export async function POST(request: Request) {
         comment: "",
         pointValue,
       });
+      incrementClueStat(date, clueId, "passed").catch(() => {});
       return NextResponse.json({
         outcome: recorded.outcome,
         correctAnswer: recorded.correctAnswer,
@@ -156,6 +157,7 @@ export async function POST(request: Request) {
       pointValue,
       playerAnswer: answer!.trim(),
     });
+    incrementClueStat(date, clueId, verdict.correct ? "correct" : "wrong").catch(() => {});
     return NextResponse.json({
       outcome: recorded.outcome,
       correctAnswer: recorded.correctAnswer,

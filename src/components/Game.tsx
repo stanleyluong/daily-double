@@ -164,6 +164,9 @@ export default function Game({ date }: { date?: string }) {
   const [appealing, setAppealing] = useState(false);
   const [appealReason, setAppealReason] = useState("");
   const [showRecap, setShowRecap] = useState(false);
+  const [clueStats, setClueStats] = useState<Record<string, { correct: number; wrong: number; passed: number }> | null>(
+    null
+  );
   // Keyboard-shortcuts overlay (opened by the ⌨ button or the "?" hotkey).
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState(0);
@@ -1262,12 +1265,20 @@ export default function Game({ date }: { date?: string }) {
           {/* Full recap */}
           <div className="max-w-2xl mx-auto mt-6">
             <button
-              onClick={() => setShowRecap((v) => !v)}
+              onClick={() => {
+                setShowRecap((v) => !v);
+                if (!clueStats) {
+                  fetch(`/api/clue-stats?boardKey=${encodeURIComponent(board.date)}`)
+                    .then((res) => res.json())
+                    .then((data) => setClueStats(data.stats ?? {}))
+                    .catch(() => setClueStats({}));
+                }
+              }}
               className="block mx-auto font-display tracking-wide text-sm text-gold/80 hover:text-gold underline underline-offset-2"
             >
               {showRecap ? "Hide full recap ▲" : "See full recap — every clue & answer ▼"}
             </button>
-            {showRecap && <Recap board={board} results={results} />}
+            {showRecap && <Recap board={board} results={results} clueStats={clueStats} />}
           </div>
         </div>
       )}
@@ -1563,7 +1574,21 @@ export default function Game({ date }: { date?: string }) {
 
 // Linear, scrollable recap of every clue on a finished board — the question,
 // your answer, and the correct answer — grouped by round then category.
-function Recap({ board, results }: { board: PublicBoard; results: Record<string, ClueResult> }) {
+function Recap({
+  board,
+  results,
+  clueStats,
+}: {
+  board: PublicBoard;
+  results: Record<string, ClueResult>;
+  clueStats: Record<string, { correct: number; wrong: number; passed: number }> | null;
+}) {
+  const pctCorrect = (clueId: string): number | null => {
+    const s = clueStats?.[clueId];
+    if (!s) return null;
+    const total = s.correct + s.wrong + s.passed;
+    return total > 0 ? Math.round((s.correct / total) * 100) : null;
+  };
   const outcomeStyle = (o: Outcome) =>
     o === "correct" ? "text-green-400" : o === "wrong" ? "text-red-400" : "text-blue-200/40";
   const outcomeMark = (o: Outcome) => (o === "correct" ? "✓" : o === "wrong" ? "✗" : "–");
@@ -1603,6 +1628,9 @@ function Recap({ board, results }: { board: PublicBoard; results: Record<string,
                                 {r.playerAnswer}
                               </span>
                             </>
+                          )}
+                          {pctCorrect(clue.id) !== null && (
+                            <> · {pctCorrect(clue.id)}% of players got this right</>
                           )}
                         </p>
                       </li>

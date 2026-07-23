@@ -107,6 +107,47 @@ export async function claimAppeal(uid: string, date: string, clueId: string): Pr
   }
 }
 
+// Board-wide per-clue difficulty stats — how many players got each clue
+// right/wrong/passed, aggregated across everyone who's played that board.
+// Keyed by boardKey (a date or custom-{id}) + clueId, not per-user, so this is
+// a single collection with a plain equality filter (no composite index, same
+// pattern as answeredCluesForDate). Incremented once per single-player judge
+// call; multiplayer doesn't feed this (it judges through a different path).
+export interface ClueStat {
+  correct: number;
+  wrong: number;
+  passed: number;
+}
+
+function clueStatDocId(boardKey: string, clueId: string): string {
+  return `${boardKey}_${clueId}`;
+}
+
+export async function incrementClueStat(
+  boardKey: string,
+  clueId: string,
+  outcome: "correct" | "wrong" | "passed"
+): Promise<void> {
+  await db()
+    .collection("clueStats")
+    .doc(clueStatDocId(boardKey, clueId))
+    .set({ boardKey, clueId, [outcome]: FieldValue.increment(1) }, { merge: true });
+}
+
+export async function clueStatsForBoard(boardKey: string): Promise<Record<string, ClueStat>> {
+  const snap = await db().collection("clueStats").where("boardKey", "==", boardKey).get();
+  const out: Record<string, ClueStat> = {};
+  snap.forEach((d) => {
+    const data = d.data();
+    out[String(data.clueId)] = {
+      correct: Number(data.correct ?? 0),
+      wrong: Number(data.wrong ?? 0),
+      passed: Number(data.passed ?? 0),
+    };
+  });
+  return out;
+}
+
 // Flip a recorded clue's outcome/comment — used when an appeal is granted.
 export async function updateClueOutcome(
   uid: string,
