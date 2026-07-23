@@ -6,6 +6,7 @@ import type { PublicBoard, PublicClue } from "@/lib/jeopardy";
 import type { PercentileStats, ScoreRow } from "@/lib/scores";
 import { formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
 import { readAutoAdvance, type AutoAdvance } from "@/lib/prefs";
+import { playSound, stopSound } from "@/lib/sounds";
 import PercentileMeter from "@/components/PercentileMeter";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
@@ -375,6 +376,9 @@ export default function Game({ date }: { date?: string }) {
       setVerdict(result);
       setPhase("result");
       justAnsweredRef.current = true; // enables auto-advance when the modal closes
+      stopSound("final"); // if this was Final Jeopardy, cut the think music
+      if (result.outcome === "correct") playSound("correct");
+      else if (result.outcome === "wrong") playSound("wrong");
     },
     [persist, totalClues, roundIndex]
   );
@@ -541,6 +545,8 @@ export default function Game({ date }: { date?: string }) {
       return;
     }
     if (metaRef.current.startedAt === null) metaRef.current.startedAt = Date.now();
+    stopSound("maintheme");
+    if (clue.dailyDouble) playSound("dailydouble");
     setActive({ ...clue, categoryTitle });
     setInput("");
     setWagerInput("");
@@ -557,6 +563,8 @@ export default function Game({ date }: { date?: string }) {
       return;
     }
     if (metaRef.current.startedAt === null) metaRef.current.startedAt = Date.now();
+    stopSound("maintheme");
+    playSound("final");
     setActive({
       id: "final",
       value: 0,
@@ -590,6 +598,7 @@ export default function Game({ date }: { date?: string }) {
   };
 
   const closeClue = useCallback(() => {
+    stopSound("final");
     setActive(null);
     setVerdict(null);
     setReviewing(false);
@@ -657,6 +666,15 @@ export default function Game({ date }: { date?: string }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [active]);
+
+  // Main theme when the board first loads (best-effort — browsers may block
+  // audio until the first interaction). It stops when you open a clue.
+  const themeStartedRef = useRef(false);
+  useEffect(() => {
+    if (!board || themeStartedRef.current) return;
+    themeStartedRef.current = true;
+    playSound("maintheme");
+  }, [board]);
 
   const advanceRound = () => {
     if (!board) return;

@@ -47,7 +47,18 @@ function tone(freq: number, start: number, dur: number, type: OscType = "sine", 
   osc.stop(t0 + dur + 0.02);
 }
 
-export type SoundName = "tick" | "go" | "correct" | "wrong" | "timeup" | "win" | "lose" | "pick";
+export type SoundName =
+  | "tick"
+  | "go"
+  | "correct"
+  | "wrong"
+  | "timeup"
+  | "win"
+  | "lose"
+  | "pick"
+  | "dailydouble"
+  | "final"
+  | "maintheme";
 
 const RECIPES: Record<SoundName, () => void> = {
   tick: () => tone(520, 0, 0.09, "triangle", 0.12),
@@ -69,6 +80,13 @@ const RECIPES: Record<SoundName, () => void> = {
     [392, 330, 262].forEach((f, i) => tone(f, i * 0.16, 0.3, "triangle", 0.14));
   },
   pick: () => tone(880, 0, 0.1, "triangle", 0.14),
+  // These normally play from files (below); the synth entries are just
+  // fallbacks if a file is missing (maintheme stays silent rather than beep).
+  dailydouble: () => {
+    [440, 554, 659].forEach((f, i) => tone(f, i * 0.08, 0.2, "triangle", 0.16));
+  },
+  final: () => tone(294, 0, 0.6, "sine", 0.12),
+  maintheme: () => {},
 };
 
 // Optional audio-file overrides. Drop matching files in public/sounds/ and
@@ -82,11 +100,14 @@ const FILES: Record<SoundName, string> = {
   tick: "/sounds/tick.mp3",
   go: "/sounds/go.mp3",
   correct: "/sounds/correct.mp3",
-  wrong: "/sounds/wrong.mp3",
+  wrong: "/sounds/incorrect.mp3",
   timeup: "/sounds/timeup.mp3",
   win: "/sounds/win.mp3",
   lose: "/sounds/lose.mp3",
   pick: "/sounds/pick.mp3",
+  dailydouble: "/sounds/dailydouble.mp3",
+  final: "/sounds/final.mp3",
+  maintheme: "/sounds/maintheme.mp3",
 };
 
 // Per-sound element cache. undefined = not tried yet; null = load failed (use
@@ -124,5 +145,32 @@ export function playSound(name: SoundName): void {
     RECIPES[name]();
   } catch {
     /* audio unavailable — silent no-op */
+  }
+}
+
+// Stop a playing file (e.g. the main theme when a clue opens, or the final
+// music when it resolves). No-op for synth sounds — those are short one-shots.
+export function stopSound(name: SoundName): void {
+  const a = els[name];
+  if (a) {
+    try {
+      a.pause();
+      a.currentTime = 0;
+    } catch {
+      /* no-op */
+    }
+  }
+}
+
+export function stopAllSounds(): void {
+  for (const a of Object.values(els)) {
+    if (a) {
+      try {
+        a.pause();
+        a.currentTime = 0;
+      } catch {
+        /* no-op */
+      }
+    }
   }
 }

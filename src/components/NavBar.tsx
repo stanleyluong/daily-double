@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "firebase/auth";
@@ -9,6 +9,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { useDm } from "@/components/DmProvider";
 import { useFriends } from "@/components/FriendsProvider";
 import AuthModal from "@/components/AuthModal";
+import { isMuted, setMuted as storeMuted, stopAllSounds } from "@/lib/sounds";
 
 // Primary destinations, shown as tabs in the top bar (Hextech-client style).
 const TABS: { href: string; label: string }[] = [
@@ -31,6 +32,14 @@ export default function NavBar() {
   const pathname = usePathname() ?? "/";
   const [modalOpen, setModalOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [muted, setMuted] = useState(false);
+  useEffect(() => setMuted(isMuted()), []);
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    storeMuted(next);
+    if (next) stopAllSounds();
+  };
 
   // Badge count for pending invites + friend requests + unread DMs (draws the
   // eye to the social panel the way the LoL client's friends button pulses).
@@ -82,6 +91,14 @@ export default function NavBar() {
 
         {/* Account — desktop */}
         <div className="hidden md:flex items-center gap-3 text-sm">
+          <button
+            onClick={toggleMute}
+            title={muted ? "Unmute sounds" : "Mute sounds"}
+            aria-label={muted ? "Unmute sounds" : "Mute sounds"}
+            className="text-lg leading-none text-blue-200/60 hover:text-gold"
+          >
+            {muted ? "🔇" : "🔊"}
+          </button>
           <Link
             href="/settings"
             title="Settings"
@@ -152,6 +169,12 @@ export default function NavBar() {
               </Link>
             );
           })}
+          <button
+            onClick={toggleMute}
+            className="text-left px-2 py-2.5 font-display text-xl tracking-wide text-blue-200/70"
+          >
+            {muted ? "🔇 Sound off" : "🔊 Sound on"}
+          </button>
           <div className="border-t border-[color:var(--hairline)] mt-2 pt-2 flex items-center justify-between">
             {user ? (
               <>
