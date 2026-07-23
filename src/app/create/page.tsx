@@ -22,6 +22,53 @@ const SUGGESTIONS = [
   "Space & Beyond",
 ];
 
+// A larger pool the "Shuffle" button samples from — inspiration to fill the
+// form with, not a fixed set (the placeholders above are just the defaults
+// shown per input slot before anything's typed).
+const CATEGORY_POOL = [
+  ...SUGGESTIONS,
+  "Before & After",
+  "State Nicknames",
+  "Classic Video Games",
+  "Mythology 101",
+  "Oscar Winners",
+  "Name That Tune",
+  "US Presidents",
+  "Famous Bridges",
+  "Kitchen Science",
+  "Animal Kingdom",
+  "Word Origins",
+  "TV Sitcoms",
+  "Olympic Moments",
+  "Famous Painters",
+  "Geography Grab Bag",
+  "Board Games",
+  "Inventions",
+  "World Currencies",
+  "Dinosaurs",
+  "Comic Book Heroes",
+  "National Parks",
+  "Culinary Classics",
+  "Famous Rivers",
+  "Rock Bands",
+  "Shakespeare",
+  "Pixar Movies",
+  "Deserts of the World",
+  "Nobel Prize Winners",
+  "Card Games",
+  "Famous Speeches",
+];
+
+function pickRandom<T>(pool: T[], n: number): T[] {
+  const copy = [...pool];
+  const picked: T[] = [];
+  for (let i = 0; i < n && copy.length > 0; i++) {
+    const idx = Math.floor(Math.random() * copy.length);
+    picked.push(copy.splice(idx, 1)[0]);
+  }
+  return picked;
+}
+
 export default function CreateBoardPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -105,6 +152,19 @@ export default function CreateBoardPage() {
                   </button>
                 );
               })}
+            </div>
+
+            <div className="flex justify-end mb-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const picks = pickRandom(CATEGORY_POOL, count);
+                  setCats((prev) => prev.map((_, i) => picks[i] ?? ""));
+                }}
+                className="text-sm text-gold/70 hover:text-gold underline underline-offset-2"
+              >
+                🎲 Shuffle category ideas
+              </button>
             </div>
 
             <div className="space-y-3 mb-6">
