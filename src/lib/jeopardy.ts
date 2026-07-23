@@ -293,6 +293,28 @@ function normalizeAnswer(answer: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
+const STOPWORDS = new Set([
+  "the", "a", "an", "of", "and", "or", "in", "on", "at", "to", "for", "is", "are", "was", "were",
+]);
+
+// Programmatic backstop for the "never give the answer away" prompt rule
+// (models occasionally ignore it anyway): true if the clue text contains the
+// full answer, or any single significant word (4+ letters, not a stopword)
+// from it, as a whole word. Catches "shin" leaking from an answer like "the
+// shin bone" appearing verbatim in the clue, not just exact full-answer echoes.
+function clueLeaksAnswer(clueText: string, answer: string): boolean {
+  const clueNorm = ` ${clueText.toLowerCase().replace(/[^a-z0-9\s]/g, " ")} `;
+  const fullAnswer = normalizeAnswer(answer);
+  if (fullAnswer.length >= 4 && clueText.toLowerCase().replace(/[^a-z0-9]/g, "").includes(fullAnswer)) {
+    return true;
+  }
+  const words = answer
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+  return words.some((w) => clueNorm.includes(` ${w} `));
+}
+
 // Runs after both rounds are fully generated. Catches any answer collision
 // that got past the round-2 avoid-lists (including within a single round,
 // since `seen` accumulates across the whole board) and regenerates just the
@@ -319,7 +341,12 @@ async function dedupeBoardAnswers(
       for (const clue of category.clues) {
         let norm = normalizeAnswer(clue.answer);
         let attempts = 0;
-        while (seen.has(norm) && brief && attempts < 3 && regenerations < MAX_TOTAL_REGENERATIONS) {
+        while (
+          (seen.has(norm) || clueLeaksAnswer(clue.clue, clue.answer)) &&
+          brief &&
+          attempts < 3 &&
+          regenerations < MAX_TOTAL_REGENERATIONS
+        ) {
           attempts++;
           regenerations++;
           try {
@@ -334,7 +361,7 @@ async function dedupeBoardAnswers(
             clue.acceptable = replacement.acceptable ?? [];
             norm = normalizeAnswer(clue.answer);
           } catch (error) {
-            console.error("Clue regeneration failed; keeping the duplicate:", error);
+            console.error("Clue regeneration failed; keeping it as-is:", error);
             break;
           }
         }
