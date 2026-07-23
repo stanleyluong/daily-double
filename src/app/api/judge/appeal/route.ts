@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   const uid = await requireUid(request);
   if (!uid) return NextResponse.json({ error: "Sign in to play." }, { status: 401 });
 
-  let body: { date?: string; boardId?: string; clueId?: string };
+  let body: { date?: string; boardId?: string; clueId?: string; reason?: string };
   try {
     body = await request.json();
   } catch {
@@ -38,6 +38,7 @@ export async function POST(request: Request) {
   }
   const date = body.date ?? todayKey();
   const { boardId, clueId } = body;
+  const reason = typeof body.reason === "string" ? body.reason : "";
   if (!isValidBoardKey(date) || !boardId || !clueId) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
@@ -75,7 +76,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "no-appeals-left" }, { status: 403 });
     }
 
-    const verdict = await judgeAppeal(category, clue, record.playerAnswer);
+    const verdict = await judgeAppeal(category, clue, record.playerAnswer, reason);
     const outcome = verdict.correct ? "correct" : "wrong";
     await updateClueOutcome(uid, date, clueId, outcome, verdict.comment);
 

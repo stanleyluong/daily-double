@@ -162,6 +162,14 @@ export function stopSound(name: SoundName): void {
   }
 }
 
+// Kick off loading of all sound files up front (creating an Audio element with
+// preload="auto" starts the download). Playing still needs a user gesture, but
+// loading doesn't — so by the time a sound fires (e.g. the Daily Double cue),
+// the file is ready instead of falling back to the synth on first play.
+export function preloadSounds(): void {
+  (Object.keys(FILES) as SoundName[]).forEach(getEl);
+}
+
 export function stopAllSounds(): void {
   for (const a of Object.values(els)) {
     if (a) {

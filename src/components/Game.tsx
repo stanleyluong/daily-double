@@ -6,7 +6,7 @@ import type { PublicBoard, PublicClue } from "@/lib/jeopardy";
 import type { PercentileStats, ScoreRow } from "@/lib/scores";
 import { formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
 import { readAutoAdvance, type AutoAdvance } from "@/lib/prefs";
-import { playSound, stopSound } from "@/lib/sounds";
+import { playSound, preloadSounds, stopSound } from "@/lib/sounds";
 import PercentileMeter from "@/components/PercentileMeter";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
@@ -39,6 +39,10 @@ interface ActiveClue extends PublicClue {
 }
 
 const NAME_KEY = "daily-double-name";
+
+// Module scope (survives remounts): the main theme starts once per page
+// session, so navigating away and back to Today doesn't restart it.
+let mainThemeStarted = false;
 
 const LOADING_MESSAGES = [
   "Summoning today's categories…",
@@ -158,6 +162,7 @@ export default function Game({ date }: { date?: string }) {
   // One appeal per game: whether it's been spent, and whether one is in flight.
   const [appealUsed, setAppealUsed] = useState(false);
   const [appealing, setAppealing] = useState(false);
+  const [appealReason, setAppealReason] = useState("");
   // Keyboard-shortcuts overlay (opened by the ⌨ button or the "?" hotkey).
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState(0);
@@ -472,7 +477,7 @@ export default function Game({ date }: { date?: string }) {
   // Contest a wrong ruling — one appeal per game. A granted appeal flips the
   // clue to correct and swings the score by 2× its value (undo the −, add the
   // +). Whether granted or denied, the appeal is spent.
-  const appeal = useCallback(async () => {
+  const appeal = useCallback(async (reason: string) => {
     if (!board || !active || !user || !verdict || verdict.outcome !== "wrong" || appealUsed || appealing) return;
     setAppealing(true);
     const clueId = active.id;
@@ -482,7 +487,7 @@ export default function Game({ date }: { date?: string }) {
       const res = await fetch("/api/judge/appeal", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ date: board.date, boardId: board.boardId, clueId }),
+        body: JSON.stringify({ date: board.date, boardId: board.boardId, clueId, reason }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -602,6 +607,7 @@ export default function Game({ date }: { date?: string }) {
     setActive(null);
     setVerdict(null);
     setReviewing(false);
+    setAppealReason("");
   }, []);
 
   // After a ruling, Enter (or Escape) returns to the board without reaching
@@ -669,10 +675,10 @@ export default function Game({ date }: { date?: string }) {
 
   // Main theme when the board first loads (best-effort — browsers may block
   // audio until the first interaction). It stops when you open a clue.
-  const themeStartedRef = useRef(false);
   useEffect(() => {
-    if (!board || themeStartedRef.current) return;
-    themeStartedRef.current = true;
+    if (!board || mainThemeStarted) return;
+    mainThemeStarted = true;
+    preloadSounds(); // start loading all sound files so the first cue isn't late
     playSound("maintheme");
   }, [board]);
 
@@ -1406,21 +1412,33 @@ export default function Game({ date }: { date?: string }) {
                       <span className="text-gold">{verdict.correctAnswer}</span>
                     </p>
                     {verdict.comment && <p className="text-blue-200/80 italic">{verdict.comment}</p>}
+
+                    {verdict.outcome === "wrong" && !appealUsed && (
+                      <div className="mt-4 text-left">
+                        <textarea
+                          value={appealReason}
+                          onChange={(e) => setAppealReason(e.target.value)}
+                          maxLength={300}
+                          rows={2}
+                          placeholder="Think the judge got it wrong? Explain why (optional)…"
+                          className="w-full rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-3 py-2 text-sm placeholder:text-blue-200/40 resize-none"
+                        />
+                        <button
+                          onClick={() => appeal(appealReason)}
+                          disabled={appealing}
+                          title="One appeal per game"
+                          className="mt-2 font-display tracking-wide text-sm border border-gold/40 text-gold px-4 py-2 rounded hover:bg-board-deep disabled:opacity-50"
+                        >
+                          {appealing ? "Appealing…" : "⚖ Appeal (1 left)"}
+                        </button>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between gap-3 mt-6">
                       <div className="min-h-[2.5rem] flex items-center">
-                        {verdict.outcome === "wrong" &&
-                          (!appealUsed ? (
-                            <button
-                              onClick={appeal}
-                              disabled={appealing}
-                              title="One appeal per game"
-                              className="font-display tracking-wide text-sm border border-gold/40 text-gold px-4 py-2 rounded hover:bg-board-deep disabled:opacity-50"
-                            >
-                              {appealing ? "Appealing…" : "⚖ Appeal (1 left)"}
-                            </button>
-                          ) : (
-                            <span className="text-xs text-blue-200/40">No appeals left</span>
-                          ))}
+                        {verdict.outcome === "wrong" && appealUsed && (
+                          <span className="text-xs text-blue-200/40">No appeals left</span>
+                        )}
                       </div>
                       <button
                         onClick={closeClue}

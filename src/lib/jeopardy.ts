@@ -838,8 +838,10 @@ Was the player correct?`,
 export async function judgeAppeal(
   category: { title: string },
   clue: { clue: string; answer: string; acceptable: string[] },
-  playerAnswer: string
+  playerAnswer: string,
+  reason = ""
 ): Promise<{ correct: boolean; comment: string }> {
+  const cleanReason = (reason ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
   const message = await client().messages.create({
     model: MODEL,
     max_tokens: 512,
@@ -848,7 +850,7 @@ export async function judgeAppeal(
       format: { type: "json_schema", schema: JUDGE_SCHEMA },
     },
     system:
-      "You are reviewing an APPEALED ruling in a Jeopardy!-style game — the player's answer was marked wrong and they're contesting it. Reconsider generously and give the benefit of the doubt on genuinely close calls: if the response is a defensible match — a valid alternate name, phrasing, spelling, or close-enough form — rule it CORRECT. Only uphold the rejection if the answer is genuinely a different thing or clearly wrong (including a reordered answer when the category is about rhyme, wordplay, or sequence). Your comment is one short, friendly sentence explaining the appeal decision.",
+      "You are reviewing an APPEALED ruling in a Jeopardy!-style game — the player's answer was marked wrong and they're contesting it. They may include a reason explaining why they think they're right; weigh it fairly but don't accept a wrong answer just because they argue well. Reconsider generously and give the benefit of the doubt on genuinely close calls: if the response is a defensible match — a valid alternate name, phrasing, spelling, or close-enough form — rule it CORRECT. Only uphold the rejection if the answer is genuinely a different thing or clearly wrong (including a reordered answer when the category is about rhyme, wordplay, or sequence). Your comment is one short, friendly sentence explaining the appeal decision.",
     messages: [
       {
         role: "user",
@@ -858,6 +860,7 @@ Correct answer: ${clue.answer}
 Also acceptable: ${clue.acceptable.length ? clue.acceptable.join("; ") : "(none listed)"}
 
 Player's response: ${JSON.stringify(playerAnswer)}
+Player's appeal reason: ${cleanReason ? JSON.stringify(cleanReason) : "(none given)"}
 
 On appeal, should this count as correct?`,
       },
