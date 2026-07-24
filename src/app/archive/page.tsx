@@ -91,7 +91,10 @@ export default function ArchivePage() {
     return "new";
   };
 
-  const playWithFriends = async (date: string) => {
+  // Every board opens into a pregame lobby (settings, chat, invite) rather
+  // than jumping straight into solo play — even playing alone just means
+  // starting the lobby without inviting anyone.
+  const playBoard = async (date: string) => {
     if (!user) return setShowAuth(true);
     setStarting(date);
     try {
@@ -285,21 +288,13 @@ export default function ArchivePage() {
                         )}
                       </td>
                       <td className="px-4 py-3 align-top">
-                        <div className="flex flex-col gap-1.5 items-stretch">
-                          <Link
-                            href={`/boards/${b.date}`}
-                            className="inline-block text-center font-display tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-4 py-1.5 rounded whitespace-nowrap"
-                          >
-                            Play
-                          </Link>
-                          <button
-                            onClick={() => playWithFriends(b.date)}
-                            disabled={starting !== null}
-                            className="text-center font-display tracking-wider border border-gold/40 text-gold hover:bg-board px-4 py-1.5 rounded whitespace-nowrap text-sm disabled:opacity-50"
-                          >
-                            {starting === b.date ? "…" : "+ Friends"}
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => playBoard(b.date)}
+                          disabled={starting !== null}
+                          className="inline-block text-center font-display tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-4 py-1.5 rounded whitespace-nowrap disabled:opacity-50"
+                        >
+                          {starting === b.date ? "…" : "Play"}
+                        </button>
                       </td>
                     </tr>
                   );
@@ -318,7 +313,7 @@ export default function ArchivePage() {
       <footer className="text-center text-xs text-blue-200/40 py-6">
         Built by Stanley Luong · Historical clues via the J! Archive · Not affiliated with Jeopardy!
       </footer>
-      {showAuth && <AuthModal onClose={() => setShowAuth(false)} message="Sign in to play with friends." />}
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} message="Sign in to play." />}
     </div>
   );
 }
