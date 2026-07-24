@@ -10,6 +10,7 @@ import { useDm } from "@/components/DmProvider";
 import { useFriends } from "@/components/FriendsProvider";
 import AuthModal from "@/components/AuthModal";
 import {
+  getMusicVolume,
   isMuted,
   isMusicMuted,
   onMainThemeEnded,
@@ -17,6 +18,7 @@ import {
   playMainTheme,
   setMuted as storeMuted,
   setMusicMuted as storeMusicMuted,
+  setMusicVolume,
 } from "@/lib/sounds";
 
 // Matching line-icon set for the music/sound/settings control — same stroke
@@ -81,9 +83,11 @@ export default function NavBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [muted, setMuted] = useState(false); // sound effects
   const [musicMuted, setMusicMuted] = useState(false); // main theme
+  const [musicVol, setMusicVol] = useState(1);
   useEffect(() => {
     setMuted(isMuted());
     setMusicMuted(isMusicMuted());
+    setMusicVol(getMusicVolume());
   }, []);
   // The theme doesn't loop — when it plays through to the end on its own,
   // reflect that in the icon instead of leaving it showing "on" for a track
@@ -158,16 +162,42 @@ export default function NavBar() {
           {/* Music / sound / settings, grouped in one bordered control so they read
               as a unit and don't get lost as bare small glyphs. */}
           <div className="flex items-center rounded-sm border border-[color:var(--hairline)] overflow-hidden">
-            <button
-              onClick={toggleMusic}
-              title={musicMuted ? "Music off — click to turn on" : "Music on — click to turn off"}
-              aria-label={musicMuted ? "Turn music on" : "Turn music off"}
-              className={`grid place-items-center h-9 w-9 transition-colors ${
-                musicMuted ? "text-blue-200/25 hover:text-blue-200/50" : "text-blue-200/75 hover:text-gold"
-              } hover:bg-shell-raised`}
-            >
-              <MusicIcon className="h-4.5 w-4.5" />
-            </button>
+            <div className="relative group/music">
+              <button
+                onClick={toggleMusic}
+                title={musicMuted ? "Music off — click to turn on" : "Music on — click to turn off"}
+                aria-label={musicMuted ? "Turn music on" : "Turn music off"}
+                className={`grid place-items-center h-9 w-9 transition-colors ${
+                  musicMuted ? "text-blue-200/25 hover:text-blue-200/50" : "text-blue-200/75 hover:text-gold"
+                } hover:bg-shell-raised`}
+              >
+                <MusicIcon className="h-4.5 w-4.5" />
+              </button>
+              {/* Hover (or keyboard-focus) reveal — volume for the main theme,
+                  separate from the on/off toggle above it. */}
+              <div
+                className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-32 rounded-sm border border-[color:var(--hairline-strong)] bg-shell-panel p-2.5 shadow-lg z-50 invisible opacity-0 group-hover/music:visible group-hover/music:opacity-100 group-focus-within/music:visible group-focus-within/music:opacity-100 transition-opacity"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] uppercase tracking-wider text-blue-200/50">Music</span>
+                  <span className="text-[10px] text-blue-200/50 tabular-nums">{Math.round(musicVol * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={musicVol}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setMusicVol(v);
+                    setMusicVolume(v);
+                  }}
+                  aria-label="Music volume"
+                  className="w-full accent-gold h-1"
+                />
+              </div>
+            </div>
             <span className="h-5 w-px bg-[color:var(--hairline)]" aria-hidden />
             <button
               onClick={toggleMute}
