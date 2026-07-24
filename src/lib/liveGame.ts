@@ -3,6 +3,7 @@ import { db } from "@/lib/firebaseAdmin";
 import {
   findClue,
   getBoardForDate,
+  isValidBoardKey,
   judgeAnswer,
   listBoards,
   toPublicBoard,
@@ -394,10 +395,9 @@ export async function joinGame(code: string, uid: string, name: string): Promise
   return result;
 }
 
-// Host-only, lobby-only: adjust the house rules before the game starts. Board
-// choice isn't editable here (it's already claimed/generated at creation) —
-// just the rules that don't depend on the board: timer, scoring, pick order.
-// Ranked games ignore this entirely (their rules are fixed server-side).
+// Host-only, lobby-only: adjust the house rules before the game starts —
+// timer, scoring, pick order. Board choice is a separate action, setGameBoard
+// below. Ranked games ignore this entirely (their rules are fixed server-side).
 export async function updateLobbySettings(
   gameId: string,
   uid: string,
@@ -423,6 +423,30 @@ export async function updateLobbySettings(
       update.pickMode = patch.pickMode;
     }
     tx.update(ref, update);
+  });
+}
+
+// Host-only, lobby-only: swap in a specific board — a real historical
+// episode, a past AI daily board, or a custom board — picked from the
+// Archive or freshly generated at /create, instead of the random pool pick
+// createGame() made by default. Verifies the board actually exists before
+// committing so a bad key can't strand the game once it starts. Ranked games
+// can't use this — their board is always a fresh AI pool pick, fixed
+// server-side, so every rated game is the same contest.
+export async function setGameBoard(gameId: string, hostUid: string, boardKey: string): Promise<void> {
+  if (!isValidBoardKey(boardKey)) throw new Error("bad-board");
+  const board = await getBoardForDate(boardKey);
+  if (!board) throw new Error("board-not-found");
+
+  const ref = gameRef(gameId);
+  await db().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error("no-game");
+    const g = toGame(gameId, snap.data()!);
+    if (g.hostUid !== hostUid) throw new Error("not-host");
+    if (g.status !== "lobby") throw new Error("bad-phase");
+    if (g.mode === "ranked") throw new Error("ranked-fixed");
+    tx.update(ref, { boardDate: boardKey, boardId: null, updatedAt: FieldValue.serverTimestamp() });
   });
 }
 

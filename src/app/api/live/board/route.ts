@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getPublicGameBoard } from "@/lib/liveGame";
+import { getPublicGameBoard, setGameBoard } from "@/lib/liveGame";
+import { uidFromRequest } from "@/lib/requestAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -15,5 +16,23 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("live board fetch failed:", error);
     return NextResponse.json({ error: "Couldn't load the board." }, { status: 500 });
+  }
+}
+
+// Host-only, lobby-only: swap in a specific board picked from the Archive or
+// freshly generated at /create.
+export async function POST(request: Request) {
+  const uid = await uidFromRequest(request);
+  if (!uid) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  try {
+    const { gameId, boardKey } = (await request.json()) as { gameId?: string; boardKey?: string };
+    if (!gameId || !boardKey) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    await setGameBoard(gameId, uid, boardKey);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Couldn't change the board." },
+      { status: 400 }
+    );
   }
 }

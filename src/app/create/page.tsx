@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
 import BoardLoading from "@/components/BoardLoading";
+import { liveSetBoard } from "@/lib/liveActions";
 
 const SUGGESTIONS = [
   "Potent Potables",
@@ -69,9 +70,13 @@ function pickRandom<T>(pool: T[], n: number): T[] {
   return picked;
 }
 
-export default function CreateBoardPage() {
+function CreateBoardPageInner() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Building a board for an existing lobby (came from "Create custom" on
+  // /live/{code}) rather than starting a standalone custom board.
+  const forGame = searchParams.get("forGame");
   const [rounds, setRounds] = useState<1 | 2>(1);
   const [cats, setCats] = useState<string[]>(Array(12).fill(""));
   const [busy, setBusy] = useState(false);
@@ -97,8 +102,13 @@ export default function CreateBoardPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Couldn't generate the board.");
-      const id = String(data.key).replace(/^custom-/, "");
-      router.push(`/custom/${id}`);
+      const key = String(data.key);
+      if (forGame) {
+        await liveSetBoard(user, forGame, key);
+        router.push(`/live/${forGame}`);
+        return;
+      }
+      router.push(`/custom/${key.replace(/^custom-/, "")}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't generate the board.");
       setBusy(false);
@@ -109,12 +119,17 @@ export default function CreateBoardPage() {
     <div className="flex flex-col flex-1 min-h-screen">
       <main className="flex-1 w-full max-w-lg mx-auto px-4 py-12">
         <header className="text-center mb-8">
-          <h1 className="font-display text-4xl md:text-5xl tracking-wider text-gold">Build Your Board</h1>
+          <h1 className="font-display text-4xl md:text-5xl tracking-wider text-gold">
+            {forGame ? `Build a Board for Game ${forGame}` : "Build Your Board"}
+          </h1>
           <p className="text-blue-200/70 mt-2">
             Name your categories and Claude writes the clues (plus a Final Jeopardy!) on the spot.
           </p>
-          <Link href="/play" className="inline-block mt-3 text-gold/80 hover:text-gold underline">
-            ← Choose a different board
+          <Link
+            href={forGame ? `/live/${forGame}` : "/play"}
+            className="inline-block mt-3 text-gold/80 hover:text-gold underline"
+          >
+            {forGame ? "← Back to lobby" : "← Choose a different board"}
           </Link>
         </header>
 
@@ -211,5 +226,13 @@ export default function CreateBoardPage() {
       </main>
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} message="Sign in to create a board." />}
     </div>
+  );
+}
+
+export default function CreateBoardPage() {
+  return (
+    <Suspense fallback={null}>
+      <CreateBoardPageInner />
+    </Suspense>
   );
 }

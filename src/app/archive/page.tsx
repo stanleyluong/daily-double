@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import type { ArchiveKindFilter, HistoricalSummary } from "@/lib/historical";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
-import { liveCreate } from "@/lib/liveActions";
+import { liveCreate, liveSetBoard } from "@/lib/liveActions";
 
 const KIND_FILTERS: { value: ArchiveKindFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -50,9 +50,13 @@ function formatDate(date: string): string {
   });
 }
 
-export default function ArchivePage() {
+function ArchivePageInner() {
   const { user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Picking a board for an existing lobby (came from "Browse Archive" on
+  // /live/{code}) rather than browsing to start a fresh game.
+  const forGame = searchParams.get("forGame");
   const [rows, setRows] = useState<HistoricalSummary[] | null>(null);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(""); // the query actually applied
@@ -61,6 +65,7 @@ export default function ArchivePage() {
   const [loading, setLoading] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [starting, setStarting] = useState<string | null>(null);
+  const [pickError, setPickError] = useState<string | null>(null);
   const [started, setStarted] = useState<Set<string> | null>(null);
   const [completed, setCompleted] = useState<Set<string> | null>(null);
 
@@ -93,15 +98,24 @@ export default function ArchivePage() {
 
   // Every board opens into a pregame lobby (settings, chat, invite) rather
   // than jumping straight into solo play — even playing alone just means
-  // starting the lobby without inviting anyone.
+  // starting the lobby without inviting anyone. In picking mode (came from
+  // an existing lobby's "Browse Archive"), swap that lobby's board instead
+  // of creating a brand new game.
   const playBoard = async (date: string) => {
     if (!user) return setShowAuth(true);
     setStarting(date);
+    setPickError(null);
     try {
+      if (forGame) {
+        await liveSetBoard(user, forGame, date);
+        router.push(`/live/${forGame}`);
+        return;
+      }
       const { code } = await liveCreate(user, user.displayName ?? "", "normal", date);
       router.push(`/live/${code}`);
-    } catch {
+    } catch (e) {
       setStarting(null);
+      setPickError(e instanceof Error ? e.message : "Couldn't set that board.");
     }
   };
 
@@ -158,16 +172,28 @@ export default function ArchivePage() {
     <div className="flex flex-col flex-1 min-h-screen">
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 md:px-8 py-10">
         <header className="text-center mb-8">
-          <h1 className="font-display text-4xl md:text-5xl tracking-wider text-gold">Jeopardy! Archive</h1>
+          <h1 className="font-display text-4xl md:text-5xl tracking-wider text-gold">
+            {forGame ? `Choose a Board for Game ${forGame}` : "Jeopardy! Archive"}
+          </h1>
           <p className="text-blue-200/70 mt-2 max-w-xl mx-auto">
-            Real episodes from the show&apos;s history, every AI-generated daily board, and custom boards other
-            players have built. Search by category — like <span className="text-gold">cats</span> or{" "}
-            <span className="text-gold">opera</span> — and play any board.
+            {forGame ? (
+              "Pick any real episode, AI daily board, or custom board — your lobby will use it instead of the random pick."
+            ) : (
+              <>
+                Real episodes from the show&apos;s history, every AI-generated daily board, and custom boards other
+                players have built. Search by category — like <span className="text-gold">cats</span> or{" "}
+                <span className="text-gold">opera</span> — and play any board.
+              </>
+            )}
           </p>
-          <Link href="/" className="inline-block mt-3 text-gold/80 hover:text-gold underline">
-            ← Today&apos;s board
+          <Link
+            href={forGame ? `/live/${forGame}` : "/"}
+            className="inline-block mt-3 text-gold/80 hover:text-gold underline"
+          >
+            {forGame ? "← Back to lobby" : "← Today's board"}
           </Link>
         </header>
+        {pickError && <p className="text-center text-red-300 text-sm mb-4">{pickError}</p>}
 
         <div className="flex justify-center gap-2 mb-4">
           {KIND_FILTERS.map((f) => (
@@ -293,7 +319,7 @@ export default function ArchivePage() {
                           disabled={starting !== null}
                           className="inline-block text-center font-display tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-4 py-1.5 rounded whitespace-nowrap disabled:opacity-50"
                         >
-                          {starting === b.date ? "…" : "Play"}
+                          {starting === b.date ? "…" : forGame ? "Select" : "Play"}
                         </button>
                       </td>
                     </tr>
@@ -315,5 +341,13 @@ export default function ArchivePage() {
       </footer>
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} message="Sign in to play." />}
     </div>
+  );
+}
+
+export default function ArchivePage() {
+  return (
+    <Suspense fallback={null}>
+      <ArchivePageInner />
+    </Suspense>
   );
 }

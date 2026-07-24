@@ -374,6 +374,30 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
               )}
             </div>
 
+            {/* Board choice — host only, normal mode only (ranked always
+                plays a fresh random pool board, fixed server-side). Doesn't
+                preview categories here; by the time you've picked one from
+                the Archive or written a custom one, you've already seen
+                them there. */}
+            {isHost && game.mode !== "ranked" && (
+              <div className="flex items-center justify-center gap-3 mb-6 text-sm">
+                <span className="text-blue-200/50">Board:</span>
+                <Link
+                  href={`/archive?forGame=${game.id}`}
+                  className="text-gold/80 hover:text-gold underline underline-offset-2"
+                >
+                  Browse Archive
+                </Link>
+                <span className="text-blue-200/30">·</span>
+                <Link
+                  href={`/create?forGame=${game.id}`}
+                  className="text-gold/80 hover:text-gold underline underline-offset-2"
+                >
+                  Create custom
+                </Link>
+              </div>
+            )}
+
             {/* House rules for this game — host can edit while in the lobby
                 (ranked games skip straight to the read-only pills, since
                 their rules are fixed server-side). */}

@@ -53,3 +53,5 @@ export const liveUpdateSettings = (
   gameId: string,
   patch: { answerMs?: number; scoringMode?: "all_correct" | "winner_only"; pickMode?: "winner" | "alternating" | "loser" }
 ) => post(user, "settings", { gameId, ...patch });
+export const liveSetBoard = (user: User, gameId: string, boardKey: string) =>
+  post(user, "board", { gameId, boardKey });
