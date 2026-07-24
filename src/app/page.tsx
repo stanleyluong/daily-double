@@ -5,17 +5,6 @@ export default function Home() {
   return (
     <div className="flex flex-col flex-1 min-h-screen">
       <main className="flex-1 w-full px-4 md:px-8 py-10">
-        <header className="text-center mb-8">
-          <h1 className="font-display text-5xl md:text-7xl tracking-wider text-gold">
-            Daily Double
-          </h1>
-          <p className="text-blue-200/70 mt-2 max-w-2xl mx-auto">
-            <strong className="text-blue-100">Daily Double</strong> is a free, AI-generated
-            Jeopardy!-style trivia game. Play a fresh board every day — two rounds, 60 clues, Daily
-            Doubles and all, written and judged by Claude. Sign in with Google to save your scores,
-            track your stats, and play live games with friends.
-          </p>
-        </header>
         <Game />
       </main>
       <footer className="text-center text-xs text-blue-200/40 py-6 space-y-1">
