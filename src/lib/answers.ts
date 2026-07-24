@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db } from "@/lib/firebaseAdmin";
 
@@ -146,6 +147,84 @@ export async function clueStatsForBoard(boardKey: string): Promise<Record<string
     };
   });
   return out;
+}
+
+// Shared verdict cache: the correct answer to a given clue never changes, so
+// if someone already typed (near enough) the same response, reuse that
+// judgment instead of spending an API call to re-ask Claude something it's
+// already answered. Keyed by boardKey + clueId + a normalized form of the
+// answer text (trimmed, lowercased, whitespace-collapsed, "what/who is/are"
+// framing and trailing punctuation stripped — the same equivalences Claude's
+// own judging prompt already treats as identical) — deliberately NOT fuzzy
+// beyond that: two different-but-similar answers (e.g. a genuine typo) still
+// get their own fresh judgment rather than silently inheriting someone
+// else's ruling on close-but-not-equal text.
+export interface CachedVerdict {
+  correct: boolean;
+  comment: string;
+}
+
+function normalizeAnswerForCache(answer: string): string {
+  return answer
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/^(what|whats|who|whos)('s|\s+is|\s+are|\s+was|\s+were)?\s+/i, "")
+    .replace(/[?.!,]+$/g, "")
+    .trim();
+}
+
+function verdictDocId(boardKey: string, clueId: string, normalized: string): string {
+  const hash = createHash("sha1").update(normalized).digest("hex").slice(0, 20);
+  return `${boardKey}_${clueId}_${hash}`;
+}
+
+export async function getCachedVerdict(
+  boardKey: string,
+  clueId: string,
+  answer: string
+): Promise<CachedVerdict | null> {
+  const normalized = normalizeAnswerForCache(answer);
+  if (!normalized) return null;
+  const snap = await db().collection("answerVerdicts").doc(verdictDocId(boardKey, clueId, normalized)).get();
+  if (!snap.exists) return null;
+  const data = snap.data()!;
+  return { correct: Boolean(data.correct), comment: String(data.comment ?? "") };
+}
+
+export async function cacheVerdict(
+  boardKey: string,
+  clueId: string,
+  answer: string,
+  verdict: CachedVerdict
+): Promise<void> {
+  const normalized = normalizeAnswerForCache(answer);
+  if (!normalized) return;
+  await db()
+    .collection("answerVerdicts")
+    .doc(verdictDocId(boardKey, clueId, normalized))
+    .set(
+      {
+        boardKey,
+        clueId,
+        normalizedAnswer: normalized,
+        correct: verdict.correct,
+        comment: verdict.comment,
+        cachedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+}
+
+// A granted appeal means the original cached verdict for this exact answer
+// text was wrong — rather than overwrite it with the appeal's comment (which
+// is worded as an appeal response, not a first-time verdict, and would read
+// strangely to the next player who never appealed), just drop the entry so
+// the next lookup gets a fresh judgeAnswer() call.
+export async function invalidateCachedVerdict(boardKey: string, clueId: string, answer: string): Promise<void> {
+  const normalized = normalizeAnswerForCache(answer);
+  if (!normalized) return;
+  await db().collection("answerVerdicts").doc(verdictDocId(boardKey, clueId, normalized)).delete();
 }
 
 // Flip a recorded clue's outcome/comment — used when an appeal is granted.

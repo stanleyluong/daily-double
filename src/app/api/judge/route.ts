@@ -7,7 +7,14 @@ import {
   roundTopValue,
   todayKey,
 } from "@/lib/jeopardy";
-import { getAnsweredClue, incrementClueStat, recordAnsweredClue, scoreSoFar } from "@/lib/answers";
+import {
+  cacheVerdict,
+  getAnsweredClue,
+  getCachedVerdict,
+  incrementClueStat,
+  recordAnsweredClue,
+  scoreSoFar,
+} from "@/lib/answers";
 import { markPlayed } from "@/lib/played";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { authAdmin } from "@/lib/firebaseAdmin";
@@ -149,13 +156,19 @@ export async function POST(request: Request) {
       });
     }
 
-    const verdict = await judgeAnswer(category, clue, answer!.trim());
+    const trimmedAnswer = answer!.trim();
+    // The correct answer to a clue never changes, so if someone already
+    // typed (near enough) the same response, reuse that judgment instead of
+    // spending an API call re-asking Claude something it's already answered.
+    const cachedVerdict = await getCachedVerdict(date, clueId, trimmedAnswer);
+    const verdict = cachedVerdict ?? (await judgeAnswer(category, clue, trimmedAnswer));
+    if (!cachedVerdict) cacheVerdict(date, clueId, trimmedAnswer, verdict).catch(() => {});
     const recorded = await recordAnsweredClue(uid, date, clueId, {
       outcome: verdict.correct ? "correct" : "wrong",
       correctAnswer: clue.answer,
       comment: verdict.comment,
       pointValue,
-      playerAnswer: answer!.trim(),
+      playerAnswer: trimmedAnswer,
     });
     incrementClueStat(date, clueId, verdict.correct ? "correct" : "wrong").catch(() => {});
     return NextResponse.json({

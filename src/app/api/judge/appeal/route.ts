@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { findClue, getBoardForDate, isValidBoardKey, judgeAppeal, todayKey } from "@/lib/jeopardy";
-import { claimAppeal, getAnsweredClue, hasUsedAppeal, updateClueOutcome } from "@/lib/answers";
+import { claimAppeal, getAnsweredClue, hasUsedAppeal, invalidateCachedVerdict, updateClueOutcome } from "@/lib/answers";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { authAdmin } from "@/lib/firebaseAdmin";
 
@@ -79,6 +79,11 @@ export async function POST(request: Request) {
     const verdict = await judgeAppeal(category, clue, record.playerAnswer, reason);
     const outcome = verdict.correct ? "correct" : "wrong";
     await updateClueOutcome(uid, date, clueId, outcome, verdict.comment);
+    // The shared verdict cache had this exact answer text marked wrong —
+    // that was apparently mistaken, so drop the cached entry rather than let
+    // it keep handing the same wrong ruling to every other player who types
+    // the same thing. Next lookup gets a fresh judgeAnswer() call.
+    if (verdict.correct) invalidateCachedVerdict(date, clueId, record.playerAnswer).catch(() => {});
 
     return NextResponse.json({
       granted: verdict.correct,
