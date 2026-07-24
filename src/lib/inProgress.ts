@@ -16,6 +16,7 @@ export interface InProgressLive {
   boardDate: string;
   boardKey: string; // resolved playedBoards key (g.boardId ?? g.boardDate) — used to dedupe against solo
   players: number;
+  otherPlayerNames: string[]; // everyone in the game besides you — who to invite back in
 }
 
 function kindOf(key: string): InProgressSolo["kind"] {
@@ -61,11 +62,13 @@ export async function inProgressLive(uid: string): Promise<InProgressLive[]> {
     const g = d.data();
     if (g.status === "in_progress" && g.mode !== "ranked") {
       const boardDate = (g.boardDate as string) ?? "";
+      const players = (g.players as { uid: string; name: string }[] | undefined) ?? [];
       rows.push({
         code: d.id,
         boardDate,
         boardKey: (g.boardId as string) || boardDate,
-        players: (g.playerUids ?? []).length,
+        players: players.length || (g.playerUids ?? []).length,
+        otherPlayerNames: players.filter((p) => p.uid !== uid).map((p) => p.name),
       });
     }
   });

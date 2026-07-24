@@ -141,8 +141,10 @@ export default function MyScoresPage() {
                       <p className="text-blue-100 truncate">
                         Live game <span className="font-mono text-gold">{g.code}</span>
                       </p>
-                      <p className="text-sm text-blue-200/50">
-                        {g.players} player{g.players === 1 ? "" : "s"} · multiplayer
+                      <p className="text-sm text-blue-200/50 truncate">
+                        {g.otherPlayerNames.length > 0
+                          ? `with ${g.otherPlayerNames.join(", ")} · multiplayer`
+                          : `${g.players} player${g.players === 1 ? "" : "s"} · multiplayer`}
                       </p>
                     </div>
                     <Link
