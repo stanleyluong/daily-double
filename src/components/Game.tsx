@@ -672,12 +672,16 @@ export default function Game({ date }: { date?: string }) {
       }
     }
     cellRefs.current[target.row]?.[target.col]?.focus();
-    // Mobile has no real keyboard focus to speak of, but auto-advance should
-    // still be visible there — scroll the next clue into view. Only when it
-    // actually moved somewhere, so closing a clue with auto-advance off (or
-    // just reviewing one) never yanks the page around.
+    // Mobile layout needs the same handoff — actually focus the button (so
+    // it's visibly ring-highlighted and Enter/Space opens it, same as
+    // desktop's native button activation) and scroll it into view, since with
+    // every category now always visible the next clue can be off-screen.
+    // Only when auto-advance actually moved, so closing a clue with it off
+    // (or just reviewing one) never yanks the page around.
     if (advanced) {
-      mobileCellRefs.current[target.row]?.[target.col]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      const mobileTarget = mobileCellRefs.current[target.row]?.[target.col];
+      mobileTarget?.scrollIntoView({ behavior: "smooth", block: "center" });
+      mobileTarget?.focus({ preventScroll: true });
     }
   }, [active, focusedCell, board, roundIndex, results]);
 
@@ -1057,7 +1061,7 @@ export default function Game({ date }: { date?: string }) {
                               ? `$${clue.value}, answered ${result.outcome} — answer: ${result.correctAnswer}. Review.`
                               : `$${clue.value}`
                           }
-                          className={`rounded-sm min-h-[52px] flex items-center justify-center transition-colors ${
+                          className={`rounded-sm min-h-[52px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold ${
                             result ? "bg-board/30 active:bg-board/50 cursor-pointer" : "bg-board active:bg-board/70 cursor-pointer"
                           }`}
                         >
