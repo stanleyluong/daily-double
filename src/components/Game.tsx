@@ -186,6 +186,10 @@ export default function Game({ date }: { date?: string }) {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const wagerRef = useRef<HTMLInputElement>(null);
+  // One auto-submit attempt per board load — reset in fetchBoard when the
+  // date changes. Doesn't retry on failure; the manual form (still shown
+  // whenever !submitted) covers that.
+  const autoSubmitAttemptedRef = useRef(false);
   // Timer + submission flags live in a ref so persist() never sees stale state.
   const metaRef = useRef<{ startedAt: number | null; durationMs: number | null; submitted: boolean }>({
     startedAt: null,
@@ -229,6 +233,7 @@ export default function Game({ date }: { date?: string }) {
     setBoard(null);
     setLoadError(null);
     setNotFound(false);
+    autoSubmitAttemptedRef.current = false;
     try {
       const res = await fetch(date ? `/api/board?date=${date}` : "/api/board");
       const data = await res.json();
@@ -834,6 +839,23 @@ export default function Game({ date }: { date?: string }) {
       setSubmitting(false);
     }
   };
+
+  // Latest submitScore, so the auto-submit effect below doesn't need it in
+  // its dependency array (submitScore is redefined every render).
+  const submitScoreRef = useRef(submitScore);
+  submitScoreRef.current = submitScore;
+
+  // Post the score automatically for signed-in players once the board is
+  // finished, rather than making everyone click "Post my score" — the name
+  // field is already prefilled from the account. Skip still opts out, and
+  // the manual form stays up as a retry path if this attempt fails.
+  useEffect(() => {
+    if (!finished || !user || submitted || skippedSubmit || submitting) return;
+    if (autoSubmitAttemptedRef.current) return;
+    if (!playerName.trim()) return;
+    autoSubmitAttemptedRef.current = true;
+    submitScoreRef.current();
+  }, [finished, user, submitted, skippedSubmit, submitting, playerName]);
 
   const shareResult = async () => {
     if (!board) return;

@@ -65,21 +65,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const { date, boardId, durationMs } = body;
+  const { date, boardId } = body;
   const name = (body.name ?? "").replace(/\s+/g, " ").trim().slice(0, 24);
 
-  if (
-    !date ||
-    !isValidBoardKey(date) ||
-    !boardId ||
-    name.length === 0 ||
-    typeof durationMs !== "number" ||
-    !Number.isInteger(durationMs) ||
-    durationMs < 0 ||
-    durationMs > MAX_DURATION_MS
-  ) {
+  if (!date || !isValidBoardKey(date) || !boardId || name.length === 0) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
+
+  // Duration is display/tie-break only (see submitScore below) — clamp
+  // rather than reject, since a paused-overnight game can easily exceed any
+  // "reasonable" session length without the score itself being any less real.
+  const rawDuration = body.durationMs;
+  const durationMs =
+    typeof rawDuration === "number" && Number.isFinite(rawDuration) && rawDuration >= 0
+      ? Math.min(Math.round(rawDuration), MAX_DURATION_MS)
+      : 0;
 
   try {
     const board = await getBoardForDate(date);

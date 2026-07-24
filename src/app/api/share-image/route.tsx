@@ -69,9 +69,9 @@ export async function GET(request: Request) {
         </div>
 
         <div style={{ display: "flex", gap: 28, marginTop: 30, fontSize: 30 }}>
-          <div style={{ color: "#4ade80" }}>{correct} correct</div>
-          <div style={{ color: "#f87171" }}>{wrong} wrong</div>
-          <div style={{ color: "#c9d2ff99" }}>{passed} passed</div>
+          <div style={{ color: "#4ade80" }}>{`${correct} correct`}</div>
+          <div style={{ color: "#f87171" }}>{`${wrong} wrong`}</div>
+          <div style={{ color: "#c9d2ff99" }}>{`${passed} passed`}</div>
         </div>
       </div>
     ),
