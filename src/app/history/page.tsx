@@ -6,6 +6,7 @@ import { useAuth } from "@/components/AuthProvider";
 import type { MyScoreRow } from "@/lib/scores";
 import type { RankedStats } from "@/lib/liveTypes";
 import type { InProgressLive, InProgressSolo } from "@/lib/inProgress";
+import type { FinishedLive } from "@/lib/liveHistory";
 import { computeStreak, formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
 
 const KIND_LABEL: Record<InProgressSolo["kind"], string> = {
@@ -29,6 +30,7 @@ export default function MyScoresPage() {
   const [rank, setRank] = useState<RankedStats | null>(null);
   const [progressSolo, setProgressSolo] = useState<InProgressSolo[] | null>(null);
   const [progressLive, setProgressLive] = useState<InProgressLive[] | null>(null);
+  const [liveHistory, setLiveHistory] = useState<FinishedLive[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -37,6 +39,7 @@ export default function MyScoresPage() {
     setRank(null);
     setProgressSolo(null);
     setProgressLive(null);
+    setLiveHistory(null);
     setError(null);
     user.getIdToken().then((token) => {
       const auth = { Authorization: `Bearer ${token}` };
@@ -61,6 +64,10 @@ export default function MyScoresPage() {
         .then((res) => res.json())
         .then((data) => setRank((data.stats as RankedStats | null) ?? null))
         .catch(() => setRank(null));
+      fetch("/api/my-live-history", { headers: auth })
+        .then((res) => res.json())
+        .then((data) => setLiveHistory((data.games as FinishedLive[]) ?? []))
+        .catch(() => setLiveHistory([]));
     });
   }, [user]);
 
@@ -179,6 +186,37 @@ export default function MyScoresPage() {
               </ul>
             </section>
           )}
+
+        {/* Recent multiplayer games — finished, unranked. Ranked has its own
+            record on /rankings. */}
+        {user && liveHistory && liveHistory.length > 0 && (
+          <section className="mb-8">
+            <h2 className="font-display text-2xl tracking-wide text-gold mb-3">
+              Recent multiplayer games ({liveHistory.length})
+            </h2>
+            <ul className="divide-y divide-board bg-board-deep/40 border border-board rounded-lg overflow-hidden">
+              {liveHistory.map((g) => (
+                <li key={g.code} className="flex items-center gap-3 px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-blue-100 truncate">
+                      {g.otherPlayerNames.length > 0 ? `with ${g.otherPlayerNames.join(", ")}` : "Solo game"}
+                    </p>
+                    <p className="text-sm text-blue-200/50">
+                      {g.finishedAt ? formatBoardDate(g.finishedAt.slice(0, 10)) : "—"}
+                    </p>
+                  </div>
+                  <span
+                    className={`font-display text-lg tracking-wide shrink-0 ${
+                      g.result === "win" ? "text-green-400" : g.result === "lose" ? "text-red-400" : "text-blue-200/60"
+                    }`}
+                  >
+                    {g.result === "win" ? "Won" : g.result === "lose" ? "Lost" : "Tied"} · {formatMoney(g.myScore)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {loading ? (
           <p className="text-center text-blue-200/50 py-16">Loading…</p>
