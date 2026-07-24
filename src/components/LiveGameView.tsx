@@ -305,7 +305,7 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
         {/* Header + scoreboard */}
         <div className="flex items-start justify-between gap-4 mb-6">
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <Link
                 href="/live"
                 onClick={() => {
@@ -326,9 +326,11 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
               >
                 {muted ? "🔇 Sound off" : "🔊 Sound on"}
               </button>
-            </div>
-            <h1 className="font-display text-2xl tracking-wider text-gold mt-1 flex items-center gap-2">
-              Game <span className="tracking-[0.2em]">{game.id}</span>
+              {/* Small, muted — this used to be a prominent "share this code"
+                  header, but joining now happens via the friends sidebar, so
+                  it's just a quiet identifier (still useful for the
+                  spectator link and telling tabs apart), not a headline. */}
+              <span className="text-xs text-blue-200/40 font-mono tracking-wider">{game.id}</span>
               <span
                 className={`text-[10px] font-mono tracking-wider px-2 py-0.5 rounded-full align-middle ${
                   game.mode === "ranked"
@@ -338,7 +340,7 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
               >
                 {game.mode === "ranked" ? "RANKED" : "NORMAL"}
               </span>
-            </h1>
+            </div>
             {/* Pause control — normal mode, in-progress only */}
             {game.mode === "normal" && game.status === "in_progress" && (
               <button
