@@ -21,6 +21,7 @@ import {
 // Primary destinations, shown as tabs in the top bar (Hextech-client style).
 const TABS: { href: string; label: string }[] = [
   { href: "/", label: "Today" },
+  { href: "/play", label: "Play Other" },
   { href: "/live", label: "Live" },
   { href: "/rankings", label: "Rankings" },
   { href: "/archive", label: "Archive" },

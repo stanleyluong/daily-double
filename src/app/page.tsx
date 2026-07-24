@@ -15,20 +15,6 @@ export default function Home() {
             Doubles and all, written and judged by Claude. Sign in with Google to save your scores,
             track your stats, and play live games with friends.
           </p>
-          <div className="mt-3 flex items-center justify-center gap-x-4 gap-y-1 text-sm flex-wrap">
-            <Link href="/play" className="text-gold hover:text-gold-soft underline font-semibold">
-              Choose a board →
-            </Link>
-            <Link href="/live" className="text-gold/80 hover:text-gold underline">
-              Play with friends →
-            </Link>
-            <Link href="/archive" className="text-gold/80 hover:text-gold underline">
-              Real Jeopardy! archive →
-            </Link>
-            <Link href="/boards" className="text-gold/80 hover:text-gold underline">
-              Past AI boards →
-            </Link>
-          </div>
         </header>
         <Game />
       </main>
