@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebaseClient";
 import { useAuth } from "@/components/AuthProvider";
@@ -79,6 +79,15 @@ export default function NavBar() {
   const { data } = useFriends();
   const { totalUnread } = useDm();
   const pathname = usePathname() ?? "/";
+  const router = useRouter();
+  // Settings has no real "home" of its own — clicking the gear while already
+  // there should return to wherever you came from, not just reload itself.
+  const onSettingsClick = (e: React.MouseEvent) => {
+    if (isActive(pathname, "/settings")) {
+      e.preventDefault();
+      router.back();
+    }
+  };
   const [modalOpen, setModalOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [muted, setMuted] = useState(false); // sound effects
@@ -210,8 +219,9 @@ export default function NavBar() {
             <span className="h-5 w-px bg-[color:var(--hairline)]" aria-hidden />
             <Link
               href="/settings"
-              title="Settings"
-              aria-label="Settings"
+              onClick={onSettingsClick}
+              title={isActive(pathname, "/settings") ? "Back" : "Settings"}
+              aria-label={isActive(pathname, "/settings") ? "Back" : "Settings"}
               className={`grid place-items-center h-9 w-9 transition-colors ${
                 isActive(pathname, "/settings")
                   ? "text-gold bg-shell-raised"
@@ -268,16 +278,23 @@ export default function NavBar() {
         <nav className="md:hidden border-t border-[color:var(--hairline)] bg-shell px-3 py-2 flex flex-col">
           {[...TABS, { href: "/settings", label: "Settings" }].map((t) => {
             const active = isActive(pathname, t.href);
+            const isSettingsBack = t.href === "/settings" && active;
             return (
               <Link
                 key={t.href}
                 href={t.href}
-                onClick={() => setMenuOpen(false)}
+                onClick={(e) => {
+                  if (isSettingsBack) {
+                    e.preventDefault();
+                    router.back();
+                  }
+                  setMenuOpen(false);
+                }}
                 className={`px-2 py-2.5 font-display text-xl tracking-wide ${
                   active ? "text-gold" : "text-blue-200/70"
                 }`}
               >
-                {t.label}
+                {isSettingsBack ? "← Back" : t.label}
               </Link>
             );
           })}
