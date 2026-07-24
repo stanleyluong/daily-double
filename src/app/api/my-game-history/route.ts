@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { authAdmin } from "@/lib/firebaseAdmin";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
-import { finishedLiveGames } from "@/lib/liveHistory";
+import { gameHistory } from "@/lib/gameHistory";
 
 export const dynamic = "force-dynamic";
 
-// Recently finished unranked multiplayer games — who you played with, your
-// score, and whether you won.
+// Every board/game session this account has touched — solo and unranked
+// multiplayer, in progress or completed — as one unified list.
 export async function GET(request: Request) {
-  if (!rateLimit(`live-history:${clientIp(request)}`, 30, 60_000)) {
+  if (!rateLimit(`game-history:${clientIp(request)}`, 30, 60_000)) {
     return NextResponse.json({ error: "Slow down a little." }, { status: 429 });
   }
   const header = request.headers.get("authorization") ?? "";
@@ -23,9 +23,9 @@ export async function GET(request: Request) {
   }
 
   try {
-    return NextResponse.json({ games: await finishedLiveGames(uid) });
+    return NextResponse.json({ rows: await gameHistory(uid) });
   } catch (error) {
-    console.error("live history fetch failed:", error);
+    console.error("game history fetch failed:", error);
     return NextResponse.json({ error: "Couldn't load your game history." }, { status: 500 });
   }
 }

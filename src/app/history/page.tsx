@@ -5,11 +5,10 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import type { MyScoreRow } from "@/lib/scores";
 import type { RankedStats } from "@/lib/liveTypes";
-import type { InProgressLive, InProgressSolo } from "@/lib/inProgress";
-import type { FinishedLive } from "@/lib/liveHistory";
-import { computeStreak, formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
+import type { GameHistoryRow, GameKind } from "@/lib/gameHistory";
+import { computeStreak, formatBoardDate, formatMoney } from "@/lib/format";
 
-const KIND_LABEL: Record<InProgressSolo["kind"], string> = {
+const KIND_LABEL: Record<GameKind, string> = {
   daily: "AI daily",
   historical: "Real episode",
   custom: "Custom",
@@ -24,50 +23,41 @@ function StatTile({ label, value }: { label: string; value: string }) {
   );
 }
 
+function formatShort(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 export default function MyScoresPage() {
   const { user, loading } = useAuth();
   const [scores, setScores] = useState<MyScoreRow[] | null>(null);
   const [rank, setRank] = useState<RankedStats | null>(null);
-  const [progressSolo, setProgressSolo] = useState<InProgressSolo[] | null>(null);
-  const [progressLive, setProgressLive] = useState<InProgressLive[] | null>(null);
-  const [liveHistory, setLiveHistory] = useState<FinishedLive[] | null>(null);
+  const [history, setHistory] = useState<GameHistoryRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     setScores(null);
     setRank(null);
-    setProgressSolo(null);
-    setProgressLive(null);
-    setLiveHistory(null);
+    setHistory(null);
     setError(null);
     user.getIdToken().then((token) => {
       const auth = { Authorization: `Bearer ${token}` };
-      fetch("/api/my-inprogress", { headers: auth })
-        .then((res) => res.json())
-        .then((data) => {
-          setProgressSolo((data.solo as InProgressSolo[]) ?? []);
-          setProgressLive((data.live as InProgressLive[]) ?? []);
-        })
-        .catch(() => {
-          setProgressSolo([]);
-          setProgressLive([]);
-        });
-      fetch("/api/my-scores", { headers: auth })
+      fetch("/api/my-game-history", { headers: auth })
         .then((res) => res.json())
         .then((data) => {
           if (data.error) throw new Error(data.error);
-          setScores(data.scores as MyScoreRow[]);
+          setHistory(data.rows as GameHistoryRow[]);
         })
-        .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load your scores."));
+        .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load your games."));
+      fetch("/api/my-scores", { headers: auth })
+        .then((res) => res.json())
+        .then((data) => setScores((data.scores as MyScoreRow[]) ?? []))
+        .catch(() => setScores([]));
       fetch("/api/my-rank", { headers: auth })
         .then((res) => res.json())
         .then((data) => setRank((data.stats as RankedStats | null) ?? null))
         .catch(() => setRank(null));
-      fetch("/api/my-live-history", { headers: auth })
-        .then((res) => res.json())
-        .then((data) => setLiveHistory((data.games as FinishedLive[]) ?? []))
-        .catch(() => setLiveHistory([]));
     });
   }, [user]);
 
@@ -92,7 +82,7 @@ export default function MyScoresPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-screen">
-      <main className="flex-1 w-full max-w-2xl mx-auto px-4 md:px-8 py-10">
+      <main className="flex-1 w-full max-w-5xl mx-auto px-4 md:px-8 py-10">
         <header className="text-center mb-8">
           <h1 className="font-display text-4xl md:text-5xl tracking-wider text-gold">
             My Scores
@@ -134,90 +124,6 @@ export default function MyScoresPage() {
           </div>
         )}
 
-        {/* In progress — games started but not finished */}
-        {user &&
-          ((progressLive && progressLive.length > 0) || (progressSolo && progressSolo.length > 0)) && (
-            <section className="mb-8">
-              <h2 className="font-display text-2xl tracking-wide text-gold mb-3">
-                In progress ({(progressLive?.length ?? 0) + (progressSolo?.length ?? 0)})
-              </h2>
-              <ul className="divide-y divide-board bg-board-deep/40 border border-gold/30 rounded-lg overflow-hidden">
-                {progressLive?.map((g) => (
-                  <li key={g.code} className="flex items-center gap-3 px-4 py-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-blue-100 truncate">
-                        Live game <span className="font-mono text-gold">{g.code}</span>
-                      </p>
-                      <p className="text-sm text-blue-200/50 truncate">
-                        {g.otherPlayerNames.length > 0
-                          ? `with ${g.otherPlayerNames.join(", ")} · multiplayer`
-                          : `${g.players} player${g.players === 1 ? "" : "s"} · multiplayer`}
-                      </p>
-                    </div>
-                    <Link
-                      href={`/live/${g.code}`}
-                      className="font-display tracking-wide text-sm border border-gold/40 text-gold px-3 py-1.5 rounded hover:bg-board shrink-0"
-                    >
-                      Rejoin →
-                    </Link>
-                  </li>
-                ))}
-                {progressSolo?.map((s) => {
-                  const custom = s.boardKey.startsWith("custom-");
-                  const label = custom ? "Custom board" : formatBoardDate(s.boardKey);
-                  const href = custom ? `/custom/${s.boardKey.slice(7)}` : `/boards/${s.boardKey}`;
-                  return (
-                    <li key={s.boardKey} className="flex items-center gap-3 px-4 py-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-blue-100 truncate">{label}</p>
-                        <p className="text-sm text-blue-200/50">
-                          {s.answered} answered · {KIND_LABEL[s.kind]}
-                        </p>
-                      </div>
-                      <Link
-                        href={href}
-                        className="font-display tracking-wide text-sm border border-gold/40 text-gold px-3 py-1.5 rounded hover:bg-board shrink-0"
-                      >
-                        Resume →
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          )}
-
-        {/* Recent multiplayer games — finished, unranked. Ranked has its own
-            record on /rankings. */}
-        {user && liveHistory && liveHistory.length > 0 && (
-          <section className="mb-8">
-            <h2 className="font-display text-2xl tracking-wide text-gold mb-3">
-              Recent multiplayer games ({liveHistory.length})
-            </h2>
-            <ul className="divide-y divide-board bg-board-deep/40 border border-board rounded-lg overflow-hidden">
-              {liveHistory.map((g) => (
-                <li key={g.code} className="flex items-center gap-3 px-4 py-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-blue-100 truncate">
-                      {g.otherPlayerNames.length > 0 ? `with ${g.otherPlayerNames.join(", ")}` : "Solo game"}
-                    </p>
-                    <p className="text-sm text-blue-200/50">
-                      {g.finishedAt ? formatBoardDate(g.finishedAt.slice(0, 10)) : "—"}
-                    </p>
-                  </div>
-                  <span
-                    className={`font-display text-lg tracking-wide shrink-0 ${
-                      g.result === "win" ? "text-green-400" : g.result === "lose" ? "text-red-400" : "text-blue-200/60"
-                    }`}
-                  >
-                    {g.result === "win" ? "Won" : g.result === "lose" ? "Lost" : "Tied"} · {formatMoney(g.myScore)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
         {loading ? (
           <p className="text-center text-blue-200/50 py-16">Loading…</p>
         ) : !user ? (
@@ -226,42 +132,89 @@ export default function MyScoresPage() {
           </p>
         ) : error ? (
           <p className="text-center text-red-300 py-16">{error}</p>
-        ) : scores === null ? (
-          <p className="text-center text-blue-200/50 py-16">Loading your scores…</p>
-        ) : scores.length === 0 ? (
+        ) : history === null ? (
+          <p className="text-center text-blue-200/50 py-16">Loading your games…</p>
+        ) : history.length === 0 ? (
           <p className="text-center text-blue-200/50 py-16">
-            No scores yet — play today&apos;s board and post one.
+            No games yet — play today&apos;s board to get started.
           </p>
         ) : (
-          <>
-          <h2 className="font-display text-2xl tracking-wide text-gold mb-3">Completed ({scores.length})</h2>
-          <ol className="divide-y divide-board bg-board-deep/40 border border-board rounded-lg overflow-hidden">
-            {scores.map((row) => (
-              <li key={row.date} className="flex items-center gap-3 px-4 py-3">
-                <div className="flex-1 min-w-0">
-                  <Link
-                    href={`/boards/${row.date}`}
-                    className="text-gold/90 hover:text-gold hover:underline truncate block"
-                  >
-                    {formatBoardDate(row.date)}
-                  </Link>
-                  <p className="text-sm text-blue-200/50">
-                    {row.correct}✓ {row.wrong}✗ {row.passed}– · {formatDuration(row.durationMs)}
-                  </p>
-                </div>
-                <span
-                  className={`font-display text-2xl tracking-wide ${
-                    row.score < 0 ? "text-red-400" : "text-gold"
-                  }`}
-                >
-                  {formatMoney(row.score)}
-                </span>
-              </li>
-            ))}
-          </ol>
-          </>
+          <div className="overflow-x-auto rounded-lg border border-board">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-board-deep/60">
+                  <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
+                    Board
+                  </th>
+                  <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
+                    Type
+                  </th>
+                  <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
+                    Players
+                  </th>
+                  <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
+                    Progress
+                  </th>
+                  <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
+                    Created
+                  </th>
+                  <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
+                    Last played
+                  </th>
+                  <th className="text-right px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
+                    Score
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((row) => {
+                  const label = row.liveCode
+                    ? `Live game ${row.liveCode}`
+                    : row.boardKey.startsWith("custom-")
+                      ? "Custom board"
+                      : formatBoardDate(row.boardKey);
+                  return (
+                    <tr key={row.id} className="border-t border-board hover:bg-board-deep/40">
+                      <td className="px-4 py-3 align-top">
+                        <Link href={row.href} className="text-gold/90 hover:text-gold hover:underline">
+                          {label}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 align-top text-blue-200/70 whitespace-nowrap">
+                        {KIND_LABEL[row.kind]}
+                      </td>
+                      <td className="px-4 py-3 align-top text-blue-200/70">
+                        {row.players.length > 0 ? row.players.join(", ") : "Solo"}
+                      </td>
+                      <td className="px-4 py-3 align-top whitespace-nowrap">
+                        <span
+                          className={`inline-block text-xs font-display tracking-wide px-2.5 py-1 rounded-full border ${
+                            row.progress === "completed"
+                              ? "text-gold bg-gold/10 border-gold/40"
+                              : "text-blue-100 bg-blue-300/10 border-blue-300/30"
+                          }`}
+                        >
+                          {row.progress === "completed" ? "Completed" : "In progress"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 align-top text-blue-200/50 whitespace-nowrap">
+                        {formatShort(row.createdAt)}
+                      </td>
+                      <td className="px-4 py-3 align-top text-blue-200/50 whitespace-nowrap">
+                        {formatShort(row.lastPlayedAt)}
+                      </td>
+                      <td className="px-4 py-3 align-top text-right whitespace-nowrap">
+                        <span className={`font-display text-lg tracking-wide ${row.myScore < 0 ? "text-red-400" : "text-gold"}`}>
+                          {formatMoney(row.myScore)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
-
       </main>
       <footer className="text-center text-xs text-blue-200/40 py-6">
         Built by Stanley Luong · Clues generated by Claude (Opus 4.8)
