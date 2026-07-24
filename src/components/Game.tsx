@@ -140,7 +140,6 @@ export default function Game({ date }: { date?: string }) {
   const [results, setResults] = useState<Record<string, ClueResult>>({});
   const [score, setScore] = useState(0);
   const [roundIndex, setRoundIndex] = useState(0);
-  const [openMobileCategory, setOpenMobileCategory] = useState<string | null>(null);
   const [focusedCell, setFocusedCell] = useState({ row: 0, col: 0 });
   const [prevRoundIndexForFocus, setPrevRoundIndexForFocus] = useState(0);
   const cellRefs = useRef<(HTMLButtonElement | null)[][]>([]);
@@ -713,7 +712,6 @@ export default function Game({ date }: { date?: string }) {
     if (!board) return;
     const next = roundIndex + 1;
     setRoundIndex(next);
-    setOpenMobileCategory(null);
     persist(results, score, next);
   };
 
@@ -1014,71 +1012,65 @@ export default function Game({ date }: { date?: string }) {
         /* Board */
         <>
           {/* Mobile: a 6-column grid at that width is either too cramped to
-              tap or forces horizontal scrolling either way, so below `sm`
-              it's a per-category accordion instead — tap a category to
-              expand its 5 clues as a vertical strip. Same openClue() click
-              handler as the grid below; just a different layout. */}
+              tap or forces horizontal scrolling, so below `sm` it's stacked
+              category strips instead — every clue always visible, no
+              expand/tap-to-open step. Same openClue() click handler as the
+              grid below; just a different layout. */}
           <div className="sm:hidden space-y-1.5">
             {round.categories.map((cat) => {
-              const isOpen = openMobileCategory === cat.title;
               const answeredInCat = cat.clues.filter((c) => results[c.id]).length;
               return (
                 <div key={cat.title} className="bg-board-deep rounded-sm overflow-hidden">
-                  <button
-                    onClick={() => setOpenMobileCategory(isOpen ? null : cat.title)}
-                    className="w-full flex items-center justify-between gap-2 p-3 text-left"
-                  >
+                  <div className="w-full flex items-center justify-between gap-2 p-3 text-left">
                     <span className="font-display tracking-wide text-sm leading-tight uppercase">
                       {cat.title}
                     </span>
                     <span className="text-xs text-blue-200/50 shrink-0">
                       {answeredInCat}/{cat.clues.length}
                     </span>
-                  </button>
-                  {isOpen && (
-                    <div className="grid grid-cols-5 gap-1.5 p-2 pt-0">
-                      {cat.clues.map((clue) => {
-                        const result = results[clue.id];
-                        return (
-                          <button
-                            key={clue.id}
-                            onClick={() => openClue(clue, cat.title)}
-                            aria-label={
-                              result
-                                ? `$${clue.value}, answered ${result.outcome} — answer: ${result.correctAnswer}. Review.`
-                                : `$${clue.value}`
-                            }
-                            className={`rounded-sm min-h-[52px] flex items-center justify-center transition-colors ${
-                              result ? "bg-board/30 active:bg-board/50 cursor-pointer" : "bg-board active:bg-board/70 cursor-pointer"
-                            }`}
-                          >
-                            {result ? (
-                              <span className="flex flex-col items-center justify-center gap-0.5 px-0.5 w-full">
-                                <span
-                                  className={`text-sm leading-none ${
-                                    result.outcome === "correct"
-                                      ? "text-green-400"
-                                      : result.outcome === "wrong"
-                                        ? "text-red-400"
-                                        : "text-blue-200/40"
-                                  }`}
-                                >
-                                  {result.outcome === "correct" ? "✓" : result.outcome === "wrong" ? "✗" : "–"}
-                                </span>
-                                <span className="text-[9px] leading-tight text-blue-100/80 text-center line-clamp-2 break-words">
-                                  {result.correctAnswer}
-                                </span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5 p-2 pt-0">
+                    {cat.clues.map((clue) => {
+                      const result = results[clue.id];
+                      return (
+                        <button
+                          key={clue.id}
+                          onClick={() => openClue(clue, cat.title)}
+                          aria-label={
+                            result
+                              ? `$${clue.value}, answered ${result.outcome} — answer: ${result.correctAnswer}. Review.`
+                              : `$${clue.value}`
+                          }
+                          className={`rounded-sm min-h-[52px] flex items-center justify-center transition-colors ${
+                            result ? "bg-board/30 active:bg-board/50 cursor-pointer" : "bg-board active:bg-board/70 cursor-pointer"
+                          }`}
+                        >
+                          {result ? (
+                            <span className="flex flex-col items-center justify-center gap-0.5 px-0.5 w-full">
+                              <span
+                                className={`text-sm leading-none ${
+                                  result.outcome === "correct"
+                                    ? "text-green-400"
+                                    : result.outcome === "wrong"
+                                      ? "text-red-400"
+                                      : "text-blue-200/40"
+                                }`}
+                              >
+                                {result.outcome === "correct" ? "✓" : result.outcome === "wrong" ? "✗" : "–"}
                               </span>
-                            ) : (
-                              <span className="font-display text-sm text-gold tracking-wide">
-                                ${clue.value}
+                              <span className="text-[9px] leading-tight text-blue-100/80 text-center line-clamp-2 break-words">
+                                {result.correctAnswer}
                               </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                            </span>
+                          ) : (
+                            <span className="font-display text-sm text-gold tracking-wide">
+                              ${clue.value}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
