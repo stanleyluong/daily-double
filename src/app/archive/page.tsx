@@ -3,10 +3,21 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import type { HistoricalSummary } from "@/lib/historical";
+import type { ArchiveKindFilter, HistoricalSummary } from "@/lib/historical";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
 import { liveCreate } from "@/lib/liveActions";
+
+const KIND_FILTERS: { value: ArchiveKindFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "historical", label: "Real episodes" },
+  { value: "daily", label: "AI daily" },
+];
+
+const KIND_BADGE: Record<HistoricalSummary["kind"], string> = {
+  historical: "Real episode",
+  daily: "AI daily",
+};
 
 function formatDate(date: string): string {
   return new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
@@ -23,6 +34,7 @@ export default function ArchivePage() {
   const [rows, setRows] = useState<HistoricalSummary[] | null>(null);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(""); // the query actually applied
+  const [kind, setKind] = useState<ArchiveKindFilter>("all");
   const [asc, setAsc] = useState(false); // date sort direction; false = newest first
   const [loading, setLoading] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
@@ -39,10 +51,14 @@ export default function ArchivePage() {
     }
   };
 
-  const load = useCallback(async (q: string) => {
+  const load = useCallback(async (q: string, k: ArchiveKindFilter) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/historical${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+      const params = new URLSearchParams();
+      if (q) params.set("q", q);
+      if (k !== "all") params.set("kind", k);
+      const qs = params.toString();
+      const res = await fetch(`/api/historical${qs ? `?${qs}` : ""}`);
       const data = await res.json();
       setRows((data.boards as HistoricalSummary[]) ?? []);
       setActive(q);
@@ -54,8 +70,14 @@ export default function ArchivePage() {
   }, []);
 
   useEffect(() => {
-    load("");
-  }, [load]);
+    load("", "all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const changeKind = (k: ArchiveKindFilter) => {
+    setKind(k);
+    load(query.trim(), k);
+  };
 
   const sorted = rows ? [...rows].sort((a, b) => (asc ? (a.date < b.date ? -1 : 1) : a.date < b.date ? 1 : -1)) : null;
 
@@ -78,19 +100,36 @@ export default function ArchivePage() {
         <header className="text-center mb-8">
           <h1 className="font-display text-4xl md:text-5xl tracking-wider text-gold">Jeopardy! Archive</h1>
           <p className="text-blue-200/70 mt-2 max-w-xl mx-auto">
-            Real episodes from the show&apos;s history. Search by category — like{" "}
-            <span className="text-gold">cats</span> or <span className="text-gold">opera</span> — and play any board
-            from that date.
+            Real episodes from the show&apos;s history, plus every AI-generated daily board. Search by category —
+            like <span className="text-gold">cats</span> or <span className="text-gold">opera</span> — and play any
+            board from that date.
           </p>
           <Link href="/" className="inline-block mt-3 text-gold/80 hover:text-gold underline">
             ← Today&apos;s board
           </Link>
         </header>
 
+        <div className="flex justify-center gap-2 mb-4">
+          {KIND_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => changeKind(f.value)}
+              className={`font-display text-sm tracking-wide px-4 py-1.5 rounded-full border transition-colors ${
+                kind === f.value
+                  ? "bg-gold text-board-deep border-gold"
+                  : "border-blue-300/30 text-blue-200/70 hover:text-blue-100 hover:border-blue-300/50"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            load(query.trim());
+            load(query.trim(), kind);
           }}
           className="flex gap-3 max-w-lg mx-auto mb-6"
         >
@@ -111,7 +150,7 @@ export default function ArchivePage() {
               type="button"
               onClick={() => {
                 setQuery("");
-                load("");
+                load("", kind);
               }}
               className="text-blue-200/60 hover:text-blue-100 text-sm px-2"
             >
@@ -126,8 +165,8 @@ export default function ArchivePage() {
             : rows === null
               ? ""
               : active
-                ? `${sorted!.length} episode${sorted!.length === 1 ? "" : "s"} with a category matching “${active}”`
-                : `${sorted!.length} most recent episodes`}
+                ? `${sorted!.length} board${sorted!.length === 1 ? "" : "s"} with a category matching “${active}”`
+                : `${sorted!.length} most recent board${sorted!.length === 1 ? "" : "s"}`}
         </p>
 
         {sorted && sorted.length > 0 && (
@@ -154,7 +193,13 @@ export default function ArchivePage() {
                   <tr key={b.date} className="border-t border-board hover:bg-board-deep/40">
                     <td className="px-4 py-3 whitespace-nowrap align-top">
                       <span className="text-blue-100">{formatDate(b.date)}</span>
-                      <span className="block text-xs text-blue-200/40">#{b.showNumber}</span>
+                      <span
+                        className={`block text-xs mt-0.5 ${
+                          b.kind === "daily" ? "text-gold/70" : "text-blue-200/40"
+                        }`}
+                      >
+                        {b.kind === "historical" ? `#${b.showNumber} · ${KIND_BADGE.historical}` : KIND_BADGE.daily}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-blue-200/80 leading-relaxed">
                       {b.categoryTitles.map((c, i) => (
@@ -190,7 +235,7 @@ export default function ArchivePage() {
 
         {sorted && sorted.length === 0 && !loading && (
           <p className="text-center text-blue-200/50 py-16">
-            {active ? `No episodes found with a category matching “${active}”.` : "No episodes imported yet."}
+            {active ? `No boards found with a category matching “${active}”.` : "No boards found."}
           </p>
         )}
       </main>
