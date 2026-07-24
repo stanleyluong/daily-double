@@ -130,22 +130,13 @@ const RECIPES: Record<SoundName, () => void> = {
   maintheme: () => {},
 };
 
-// Optional audio-file overrides. Drop matching files in public/sounds/ and
-// they play instead of the synthesized version; anything missing silently
-// falls back to synth. Files you add are yours to source/license.
-//   tick    — countdown tick        go      — clue opens
-//   correct — right answer          wrong   — wrong answer / buzzer
-//   timeup  — time's up             pick    — selecting a clue
-//   win     — you win               lose    — you lose
-const FILES: Record<SoundName, string> = {
-  tick: "/sounds/tick.mp3",
-  go: "/sounds/go.mp3",
+// Optional audio-file overrides. Drop a matching file in public/sounds/ and
+// add it here to have it play instead of the synthesized version — anything
+// not listed here just always uses the synth, no network request attempted.
+// Files you add are yours to source/license.
+const FILES: Partial<Record<SoundName, string>> = {
   correct: "/sounds/correct.mp3",
   wrong: "/sounds/incorrect.mp3",
-  timeup: "/sounds/timeup.mp3",
-  win: "/sounds/win.mp3",
-  lose: "/sounds/lose.mp3",
-  pick: "/sounds/pick.mp3",
   dailydouble: "/sounds/dailydouble.mp3",
   final: "/sounds/final.mp3",
   maintheme: "/sounds/maintheme.mp3",
@@ -168,11 +159,12 @@ export function onMainThemeEnded(cb: () => void): () => void {
 
 function getEl(name: SoundName): HTMLAudioElement | null {
   if (name in els) return els[name] ?? null;
-  if (typeof window === "undefined" || typeof Audio === "undefined") {
-    els[name] = null;
+  const file = FILES[name];
+  if (!file || typeof window === "undefined" || typeof Audio === "undefined") {
+    els[name] = null; // no file for this one — always synth, no request made
     return null;
   }
-  const a = new Audio(FILES[name]);
+  const a = new Audio(file);
   a.preload = "auto";
   a.volume = name === "maintheme" ? getMusicVolume() : getSfxVolume();
   a.addEventListener("error", () => { els[name] = null; }, { once: true }); // missing file -> synth
