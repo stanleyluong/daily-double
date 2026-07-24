@@ -12,10 +12,11 @@ import AuthModal from "@/components/AuthModal";
 import {
   isMuted,
   isMusicMuted,
-  restartMainTheme,
+  onMainThemeEnded,
+  pauseSound,
+  playMainTheme,
   setMuted as storeMuted,
   setMusicMuted as storeMusicMuted,
-  stopSound,
 } from "@/lib/sounds";
 
 // Matching line-icon set for the music/sound/settings control — same stroke
@@ -84,6 +85,10 @@ export default function NavBar() {
     setMuted(isMuted());
     setMusicMuted(isMusicMuted());
   }, []);
+  // The theme doesn't loop — when it plays through to the end on its own,
+  // reflect that in the icon instead of leaving it showing "on" for a track
+  // that's no longer playing.
+  useEffect(() => onMainThemeEnded(() => setMusicMuted(true)), []);
   const toggleMute = () => {
     const next = !muted;
     setMuted(next);
@@ -93,8 +98,11 @@ export default function NavBar() {
     const next = !musicMuted;
     setMusicMuted(next);
     storeMusicMuted(next);
-    if (next) stopSound("maintheme");
-    else restartMainTheme();
+    // Pause keeps position (so turning it back on resumes, not restarts);
+    // playMainTheme() only restarts from 0 if it had already played through
+    // to the end, which is native <audio> behavior on a non-looping track.
+    if (next) pauseSound("maintheme");
+    else playMainTheme();
   };
 
   // Badge count for pending invites + friend requests + unread DMs (draws the

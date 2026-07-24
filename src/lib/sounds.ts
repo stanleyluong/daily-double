@@ -156,6 +156,16 @@ const FILES: Record<SoundName, string> = {
 // play, so there's at most one request per sound and none if a sound is unused.
 const els: Partial<Record<SoundName, HTMLAudioElement | null>> = {};
 
+// The theme doesn't loop — it plays through once and stops. When that
+// happens, the mute flag flips to true (so a later resume, or another tab's
+// nav bar, doesn't think it's still playing) and every subscriber (the nav
+// bar's icon) is notified to update its own UI state to match.
+const mainThemeEndListeners = new Set<() => void>();
+export function onMainThemeEnded(cb: () => void): () => void {
+  mainThemeEndListeners.add(cb);
+  return () => mainThemeEndListeners.delete(cb);
+}
+
 function getEl(name: SoundName): HTMLAudioElement | null {
   if (name in els) return els[name] ?? null;
   if (typeof window === "undefined" || typeof Audio === "undefined") {
@@ -166,6 +176,12 @@ function getEl(name: SoundName): HTMLAudioElement | null {
   a.preload = "auto";
   a.volume = name === "maintheme" ? getMusicVolume() : getSfxVolume();
   a.addEventListener("error", () => { els[name] = null; }, { once: true }); // missing file -> synth
+  if (name === "maintheme") {
+    a.addEventListener("ended", () => {
+      setMusicMuted(true);
+      mainThemeEndListeners.forEach((cb) => cb());
+    });
+  }
   els[name] = a;
   return a;
 }
@@ -192,9 +208,13 @@ export function playSound(name: SoundName): void {
   }
 }
 
-// Start (or resume) the looping main theme, but only if it's paused — so
-// calling it on every navigation/gesture never restarts music that's already
-// playing. Loading happens without a gesture; this play() needs one.
+// Start (or resume) the main theme, but only if it's paused — so calling it
+// on every navigation/gesture never restarts music that's already playing.
+// Also what the music toggle calls to turn back on: resuming a track paused
+// mid-way continues from that position (browsers only reset currentTime to 0
+// here if playback had already run to the end — see the "ended" listener in
+// getEl, which is the only other way this element becomes paused). Loading
+// happens without a gesture; this play() needs one.
 export function playMainTheme(): void {
   if (isMusicMuted()) return;
   // Only resume an element that already exists (Game creates it via
@@ -205,20 +225,6 @@ export function playMainTheme(): void {
       void a.play();
     } catch {
       /* blocked until a gesture — caller retries on interaction */
-    }
-  }
-}
-
-// Restart the theme from the top (used by the music toggle turning back on).
-export function restartMainTheme(): void {
-  if (isMusicMuted()) return;
-  const a = els["maintheme"];
-  if (a) {
-    try {
-      a.currentTime = 0;
-      void a.play();
-    } catch {
-      /* no-op */
     }
   }
 }
