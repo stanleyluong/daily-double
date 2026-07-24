@@ -143,6 +143,10 @@ export default function Game({ date }: { date?: string }) {
   const [focusedCell, setFocusedCell] = useState({ row: 0, col: 0 });
   const [prevRoundIndexForFocus, setPrevRoundIndexForFocus] = useState(0);
   const cellRefs = useRef<(HTMLButtonElement | null)[][]>([]);
+  // Mirrors cellRefs for the mobile stacked layout — same [row][col]
+  // indexing (row = value rank, col = category index) so auto-advance can
+  // scroll/focus the next clue there too, not just on the desktop grid.
+  const mobileCellRefs = useRef<(HTMLButtonElement | null)[][]>([]);
   // Set when a clue was just answered/revealed (not merely reviewed), so the
   // focus-restore effect knows whether to honor the auto-advance preference.
   const justAnsweredRef = useRef(false);
@@ -641,8 +645,7 @@ export default function Game({ date }: { date?: string }) {
 
   // When the clue modal closes, focus would otherwise land on <body>, so arrow
   // keys do nothing until you tab back. Return focus to the cell that was open
-  // (desktop grid), so arrow navigation resumes immediately. No-op on mobile
-  // (the grid buttons are display:none there).
+  // (desktop grid), so arrow navigation resumes immediately.
   const modalWasOpenRef = useRef(false);
   useEffect(() => {
     if (active) {
@@ -652,6 +655,7 @@ export default function Game({ date }: { date?: string }) {
     if (!modalWasOpenRef.current) return;
     modalWasOpenRef.current = false;
     let target = focusedCell;
+    let advanced = false;
     // If the clue was just answered (not reviewed), honor the auto-advance
     // preference and jump to the next unanswered clue of the same value/category.
     if (justAnsweredRef.current) {
@@ -663,10 +667,18 @@ export default function Game({ date }: { date?: string }) {
         if (next) {
           target = next;
           setFocusedCell(next);
+          advanced = true;
         }
       }
     }
     cellRefs.current[target.row]?.[target.col]?.focus();
+    // Mobile has no real keyboard focus to speak of, but auto-advance should
+    // still be visible there — scroll the next clue into view. Only when it
+    // actually moved somewhere, so closing a clue with auto-advance off (or
+    // just reviewing one) never yanks the page around.
+    if (advanced) {
+      mobileCellRefs.current[target.row]?.[target.col]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   }, [active, focusedCell, board, roundIndex, results]);
 
   // "?" toggles the keyboard-shortcuts overlay (not while a clue is open or
@@ -1017,7 +1029,7 @@ export default function Game({ date }: { date?: string }) {
               expand/tap-to-open step. Same openClue() click handler as the
               grid below; just a different layout. */}
           <div className="sm:hidden space-y-1.5">
-            {round.categories.map((cat) => {
+            {round.categories.map((cat, col) => {
               const answeredInCat = cat.clues.filter((c) => results[c.id]).length;
               return (
                 <div key={cat.title} className="bg-board-deep rounded-sm overflow-hidden">
@@ -1030,11 +1042,15 @@ export default function Game({ date }: { date?: string }) {
                     </span>
                   </div>
                   <div className="grid grid-cols-5 gap-1.5 p-2 pt-0">
-                    {cat.clues.map((clue) => {
+                    {cat.clues.map((clue, row) => {
                       const result = results[clue.id];
                       return (
                         <button
                           key={clue.id}
+                          ref={(el) => {
+                            if (!mobileCellRefs.current[row]) mobileCellRefs.current[row] = [];
+                            mobileCellRefs.current[row][col] = el;
+                          }}
                           onClick={() => openClue(clue, cat.title)}
                           aria-label={
                             result
