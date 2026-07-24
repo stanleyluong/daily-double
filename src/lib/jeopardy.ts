@@ -167,22 +167,39 @@ interface CategoryBrief {
   theme: string;
 }
 
+// Programmatic backstop for the "HARD BAN on letter-mechanic gimmicks" prompt
+// rule below — models occasionally write one anyway (e.g. a "Double the
+// Letters" category claiming every answer has a repeated letter, when one
+// doesn't: "harpsichord" has no e's at all). These require exact
+// letter-by-letter verification the model can't reliably do itself, and
+// there's no cheap way to verify an arbitrary letter claim after the fact —
+// so instead of trying, just detect the pattern in the category's own
+// title/theme and reject it outright.
+const LETTER_GIMMICK_PATTERN =
+  /\b(hidden word|double(?:d)? the letters?|doubled letters?|repeated letters?|shares? (?:a|the) letter|share the same letter|silent letter|same starting letter|starts? with the same letter|anagram|acrostic|word within a word|word inside (?:a|another) word)\b/i;
+
+function isLetterGimmickCategory(brief: CategoryBrief): boolean {
+  return LETTER_GIMMICK_PATTERN.test(brief.title) || LETTER_GIMMICK_PATTERN.test(brief.theme);
+}
+
 async function generateCategories(
   date: string,
   roundLabel: string,
   harder: boolean,
   avoidCategories: CategoryBrief[] = []
 ): Promise<CategoryBrief[]> {
-  const message = await client().messages.create({
-    model: MODEL,
-    max_tokens: 1024,
-    output_config: { format: { type: "json_schema", schema: CATEGORIES_SCHEMA } },
-    system:
-      "You are the head writer for a Jeopardy!-style trivia game. You write clever, varied boards for a general audience.",
-    messages: [
-      {
-        role: "user",
-        content: `Create exactly 6 categories for the ${roundLabel} round of the daily board of ${date}.
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const message = await client().messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      output_config: { format: { type: "json_schema", schema: CATEGORIES_SCHEMA } },
+      system:
+        "You are the head writer for a Jeopardy!-style trivia game. You write clever, varied boards for a general audience.",
+      messages: [
+        {
+          role: "user",
+          content: `Create exactly 6 categories for the ${roundLabel} round of the daily board of ${date}.
 
 Requirements:
 - A diverse mix across the 6: at least one from history/geography/science, one from arts/literature, one from pop culture/sports/food, and one LIGHT wordplay category — rhymes, puns, or "before & after" — where the answers are ordinary knowledge and the wordplay is just the framing.
@@ -190,24 +207,39 @@ Requirements:
 - Titles are short and punchy, puns welcome, ALL CAPS not required.
 - For each category, write a one-sentence "theme" that a clue writer would use to stay on-brief. For any wordplay category, state the gimmick precisely and ensure every clue's answer genuinely satisfies it.
 - Vary topics day to day; let the date seed your choices but never mention the date in titles.${
-          harder
-            ? "\n- This is the second (harder) round: categories should be a notch more specific or advanced than a first-round board, the way real Double Jeopardy! categories go deeper than the first round."
-            : ""
-        }${
-          avoidCategories.length > 0
-            ? `\n- This board already has these categories from an earlier round — do not repeat their subject matter, and do not create another category centered on the same core topic (e.g. if "Rivers of the World" already exists, don't also write a geography category built around rivers):\n${avoidCategories
-                .map((c) => `  - "${c.title}": ${c.theme}`)
-                .join("\n")}`
-            : ""
-        }`,
-      },
-    ],
-  });
-  const { categories } = parseJson<{ categories: CategoryBrief[] }>(message);
-  if (!Array.isArray(categories) || categories.length < 6) {
-    throw new Error("Model returned fewer than 6 categories");
+            harder
+              ? "\n- This is the second (harder) round: categories should be a notch more specific or advanced than a first-round board, the way real Double Jeopardy! categories go deeper than the first round."
+              : ""
+          }${
+            avoidCategories.length > 0
+              ? `\n- This board already has these categories from an earlier round — do not repeat their subject matter, and do not create another category centered on the same core topic (e.g. if "Rivers of the World" already exists, don't also write a geography category built around rivers):\n${avoidCategories
+                  .map((c) => `  - "${c.title}": ${c.theme}`)
+                  .join("\n")}`
+              : ""
+          }`,
+        },
+      ],
+    });
+    const { categories } = parseJson<{ categories: CategoryBrief[] }>(message);
+    if (!Array.isArray(categories) || categories.length < 6) {
+      throw new Error("Model returned fewer than 6 categories");
+    }
+    const clean = categories.slice(0, 6);
+    const hasGimmick = clean.some(isLetterGimmickCategory);
+    if (!hasGimmick || attempt === MAX_ATTEMPTS) {
+      if (hasGimmick) {
+        console.error(
+          `Letter-gimmick category slipped through after ${MAX_ATTEMPTS} attempts for ${date} ${roundLabel}:`,
+          clean.filter(isLetterGimmickCategory).map((c) => c.title)
+        );
+      }
+      return clean;
+    }
+    // Ask for a fresh batch of 6 rather than patching just the offending
+    // one — simpler than building a single-category regeneration path for
+    // what should be a rare backstop case.
   }
-  return categories.slice(0, 6);
+  throw new Error("unreachable");
 }
 
 async function generateClues(
