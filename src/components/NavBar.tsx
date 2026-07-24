@@ -18,6 +18,44 @@ import {
   stopSound,
 } from "@/lib/sounds";
 
+// Matching line-icon set for the music/sound/settings control — same stroke
+// weight and corner style, so they read as one family instead of whatever
+// random design language each platform's emoji font happens to use.
+function MusicIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="16" r="3" />
+    </svg>
+  );
+}
+
+function VolumeIcon({ muted, className }: { muted: boolean; className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      {muted ? (
+        <>
+          <line x1="23" y1="9" x2="17" y2="15" />
+          <line x1="17" y1="9" x2="23" y2="15" />
+        </>
+      ) : (
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" />
+      )}
+    </svg>
+  );
+}
+
+function GearIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
 // Primary destinations, shown as tabs in the top bar (Hextech-client style).
 const TABS: { href: string; label: string }[] = [
   { href: "/", label: "Today" },
@@ -116,33 +154,33 @@ export default function NavBar() {
               onClick={toggleMusic}
               title={musicMuted ? "Music off — click to turn on" : "Music on — click to turn off"}
               aria-label={musicMuted ? "Turn music on" : "Turn music off"}
-              className={`grid place-items-center h-9 w-9 text-2xl leading-none transition-colors ${
+              className={`grid place-items-center h-9 w-9 transition-colors ${
                 musicMuted ? "text-blue-200/25 hover:text-blue-200/50" : "text-blue-200/75 hover:text-gold"
               } hover:bg-shell-raised`}
             >
-              🎵
+              <MusicIcon className="h-4.5 w-4.5" />
             </button>
             <span className="h-5 w-px bg-[color:var(--hairline)]" aria-hidden />
             <button
               onClick={toggleMute}
               title={muted ? "Sound effects off — click to turn on" : "Sound effects on — click to turn off"}
               aria-label={muted ? "Unmute sound effects" : "Mute sound effects"}
-              className="grid place-items-center h-9 w-9 text-2xl leading-none text-blue-200/75 hover:text-gold hover:bg-shell-raised transition-colors"
+              className="grid place-items-center h-9 w-9 text-blue-200/75 hover:text-gold hover:bg-shell-raised transition-colors"
             >
-              {muted ? "🔇" : "🔊"}
+              <VolumeIcon muted={muted} className="h-4.5 w-4.5" />
             </button>
             <span className="h-5 w-px bg-[color:var(--hairline)]" aria-hidden />
             <Link
               href="/settings"
               title="Settings"
               aria-label="Settings"
-              className={`grid place-items-center h-9 w-9 text-2xl leading-none transition-colors ${
+              className={`grid place-items-center h-9 w-9 transition-colors ${
                 isActive(pathname, "/settings")
                   ? "text-gold bg-shell-raised"
                   : "text-blue-200/75 hover:text-gold hover:bg-shell-raised"
               }`}
             >
-              ⚙
+              <GearIcon className="h-4.5 w-4.5" />
             </Link>
           </div>
           {loading ? (
