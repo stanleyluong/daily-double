@@ -12,11 +12,33 @@ const KIND_FILTERS: { value: ArchiveKindFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "historical", label: "Real episodes" },
   { value: "daily", label: "AI daily" },
+  { value: "custom", label: "Custom" },
 ];
 
 const KIND_BADGE: Record<HistoricalSummary["kind"], string> = {
   historical: "Real episode",
   daily: "AI daily",
+  custom: "Custom",
+};
+
+// date is YYYY-MM-DD for daily/historical (directly sortable); custom boards
+// use `custom-{id}` there instead, so sort those by createdAt.
+function archiveSortKey(row: HistoricalSummary): string {
+  return row.kind === "custom" ? (row.createdAt ?? "") : row.date;
+}
+
+type BoardStatus = "completed" | "in_progress" | "new";
+
+const STATUS_LABEL: Record<BoardStatus, string> = {
+  completed: "Completed",
+  in_progress: "In progress",
+  new: "New",
+};
+
+const STATUS_CLASS: Record<BoardStatus, string> = {
+  completed: "text-gold bg-gold/10 border-gold/40",
+  in_progress: "text-blue-100 bg-blue-300/10 border-blue-300/30",
+  new: "text-blue-200/40 bg-transparent border-blue-300/15",
 };
 
 function formatDate(date: string): string {
@@ -39,6 +61,35 @@ export default function ArchivePage() {
   const [loading, setLoading] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [starting, setStarting] = useState<string | null>(null);
+  const [started, setStarted] = useState<Set<string> | null>(null);
+  const [completed, setCompleted] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      setStarted(null);
+      setCompleted(null);
+      return;
+    }
+    user.getIdToken().then((token) => {
+      fetch("/api/my-board-status", { headers: { Authorization: `Bearer ${token}` } })
+        .then((res) => res.json())
+        .then((data) => {
+          setStarted(new Set((data.started as string[]) ?? []));
+          setCompleted(new Set((data.completed as string[]) ?? []));
+        })
+        .catch(() => {
+          setStarted(new Set());
+          setCompleted(new Set());
+        });
+    });
+  }, [user]);
+
+  const statusOf = (date: string): BoardStatus | null => {
+    if (!completed || !started) return null; // signed out, or not loaded yet
+    if (completed.has(date)) return "completed";
+    if (started.has(date)) return "in_progress";
+    return "new";
+  };
 
   const playWithFriends = async (date: string) => {
     if (!user) return setShowAuth(true);
@@ -79,7 +130,13 @@ export default function ArchivePage() {
     load(query.trim(), k);
   };
 
-  const sorted = rows ? [...rows].sort((a, b) => (asc ? (a.date < b.date ? -1 : 1) : a.date < b.date ? 1 : -1)) : null;
+  const sorted = rows
+    ? [...rows].sort((a, b) => {
+        const ka = archiveSortKey(a);
+        const kb = archiveSortKey(b);
+        return asc ? (ka < kb ? -1 : 1) : ka < kb ? 1 : -1;
+      })
+    : null;
 
   const highlight = (cat: string) => {
     if (!active) return cat;
@@ -100,9 +157,9 @@ export default function ArchivePage() {
         <header className="text-center mb-8">
           <h1 className="font-display text-4xl md:text-5xl tracking-wider text-gold">Jeopardy! Archive</h1>
           <p className="text-blue-200/70 mt-2 max-w-xl mx-auto">
-            Real episodes from the show&apos;s history, plus every AI-generated daily board. Search by category —
-            like <span className="text-gold">cats</span> or <span className="text-gold">opera</span> — and play any
-            board from that date.
+            Real episodes from the show&apos;s history, every AI-generated daily board, and custom boards other
+            players have built. Search by category — like <span className="text-gold">cats</span> or{" "}
+            <span className="text-gold">opera</span> — and play any board.
           </p>
           <Link href="/" className="inline-block mt-3 text-gold/80 hover:text-gold underline">
             ← Today&apos;s board
@@ -185,49 +242,68 @@ export default function ArchivePage() {
                   <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
                     Categories
                   </th>
+                  <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
+                    Status
+                  </th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((b) => (
-                  <tr key={b.date} className="border-t border-board hover:bg-board-deep/40">
-                    <td className="px-4 py-3 whitespace-nowrap align-top">
-                      <span className="text-blue-100">{formatDate(b.date)}</span>
-                      <span
-                        className={`block text-xs mt-0.5 ${
-                          b.kind === "daily" ? "text-gold/70" : "text-blue-200/40"
-                        }`}
-                      >
-                        {b.kind === "historical" ? `#${b.showNumber} · ${KIND_BADGE.historical}` : KIND_BADGE.daily}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-blue-200/80 leading-relaxed">
-                      {b.categoryTitles.map((c, i) => (
-                        <span key={i}>
-                          {i > 0 && <span className="text-blue-200/30"> · </span>}
-                          {highlight(c)}
+                {sorted.map((b) => {
+                  const status = statusOf(b.date);
+                  return (
+                    <tr key={b.date} className="border-t border-board hover:bg-board-deep/40">
+                      <td className="px-4 py-3 whitespace-nowrap align-top">
+                        <span className="text-blue-100">
+                          {b.kind === "custom" && b.createdAt ? formatDate(b.createdAt.slice(0, 10)) : formatDate(b.date)}
                         </span>
-                      ))}
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <div className="flex flex-col gap-1.5 items-stretch">
-                        <Link
-                          href={`/boards/${b.date}`}
-                          className="inline-block text-center font-display tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-4 py-1.5 rounded whitespace-nowrap"
+                        <span
+                          className={`block text-xs mt-0.5 ${
+                            b.kind === "daily" ? "text-gold/70" : b.kind === "custom" ? "text-blue-200/50" : "text-blue-200/40"
+                          }`}
                         >
-                          Play
-                        </Link>
-                        <button
-                          onClick={() => playWithFriends(b.date)}
-                          disabled={starting !== null}
-                          className="text-center font-display tracking-wider border border-gold/40 text-gold hover:bg-board px-4 py-1.5 rounded whitespace-nowrap text-sm disabled:opacity-50"
-                        >
-                          {starting === b.date ? "…" : "+ Friends"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {b.kind === "historical" ? `#${b.showNumber} · ${KIND_BADGE.historical}` : KIND_BADGE[b.kind]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-blue-200/80 leading-relaxed">
+                        {b.categoryTitles.map((c, i) => (
+                          <span key={i}>
+                            {i > 0 && <span className="text-blue-200/30"> · </span>}
+                            {highlight(c)}
+                          </span>
+                        ))}
+                      </td>
+                      <td className="px-4 py-3 align-top whitespace-nowrap">
+                        {status ? (
+                          <span
+                            className={`inline-block text-xs font-display tracking-wide px-2.5 py-1 rounded-full border ${STATUS_CLASS[status]}`}
+                          >
+                            {STATUS_LABEL[status]}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-blue-200/30">Sign in to track</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="flex flex-col gap-1.5 items-stretch">
+                          <Link
+                            href={`/boards/${b.date}`}
+                            className="inline-block text-center font-display tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-4 py-1.5 rounded whitespace-nowrap"
+                          >
+                            Play
+                          </Link>
+                          <button
+                            onClick={() => playWithFriends(b.date)}
+                            disabled={starting !== null}
+                            className="text-center font-display tracking-wider border border-gold/40 text-gold hover:bg-board px-4 py-1.5 rounded whitespace-nowrap text-sm disabled:opacity-50"
+                          >
+                            {starting === b.date ? "…" : "+ Friends"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
