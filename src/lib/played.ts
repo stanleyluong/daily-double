@@ -2,9 +2,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { db } from "@/lib/firebaseAdmin";
 
 // Tracks which boards a user has played, at users/{uid}/playedBoards/{key}.
-// A "key" is a board key: a date (daily/historical) or a custom-{id}. Used for
-// the played-history view and to pick an unplayed historical episode in
-// multiplayer.
+// A "key" is a board key: a date (daily/historical) or a custom-{id}. Used to
+// pick an unplayed historical episode in multiplayer, and by inProgressSolo
+// (src/lib/inProgress.ts) to find boards started but not yet submitted.
 
 function keyDocId(boardKey: string): string {
   // Board keys (dates, custom-xxx) are already Firestore-doc-id safe.
@@ -23,28 +23,6 @@ export async function markPlayed(uid: string, boardKey: string): Promise<void> {
 export async function playedKeys(uid: string): Promise<Set<string>> {
   const snap = await db().collection("users").doc(uid).collection("playedBoards").get();
   return new Set(snap.docs.map((d) => d.id));
-}
-
-export interface PlayedRow {
-  boardKey: string;
-  kind: "daily" | "historical" | "custom";
-  lastPlayedAt: string | null;
-}
-
-export async function myPlayed(uid: string): Promise<PlayedRow[]> {
-  const snap = await db().collection("users").doc(uid).collection("playedBoards").get();
-  const rows = snap.docs.map((d) => {
-    const key = d.get("boardKey") as string;
-    const ts = d.get("lastPlayedAt") as FirebaseFirestore.Timestamp | undefined;
-    const kind: PlayedRow["kind"] = key.startsWith("custom-")
-      ? "custom"
-      : key < "2026-07-17" // launch-ish; older dates are real historical episodes
-        ? "historical"
-        : "daily";
-    return { boardKey: key, kind, lastPlayedAt: ts ? ts.toDate().toISOString() : null };
-  });
-  rows.sort((a, b) => (a.lastPlayedAt ?? "") < (b.lastPlayedAt ?? "") ? 1 : -1);
-  return rows;
 }
 
 // Picks a random historical episode the user hasn't played, for multiplayer's

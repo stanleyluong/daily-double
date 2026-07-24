@@ -19,7 +19,7 @@ export interface InProgressLive {
 }
 
 function kindOf(key: string): InProgressSolo["kind"] {
-  // Mirrors myPlayed(): custom-*, pre-launch dates are real episodes, else daily.
+  // custom-*, pre-launch dates are real episodes, else daily.
   return key.startsWith("custom-") ? "custom" : key < "2026-07-17" ? "historical" : "daily";
 }
 
