@@ -23,7 +23,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [solo, live] = await Promise.all([inProgressSolo(uid), inProgressLive(uid)]);
+    // Live first — its resolved board keys are excluded from solo so a board
+    // being played in an active multiplayer match doesn't also show as a
+    // separate (likely 0-answered) solo row for the same board.
+    const live = await inProgressLive(uid);
+    const solo = await inProgressSolo(uid, new Set(live.map((g) => g.boardKey)));
     return NextResponse.json({ solo, live });
   } catch (error) {
     console.error("in-progress fetch failed:", error);
