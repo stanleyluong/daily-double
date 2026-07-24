@@ -131,7 +131,9 @@ export default function MyScoresPage() {
         {user &&
           ((progressLive && progressLive.length > 0) || (progressSolo && progressSolo.length > 0)) && (
             <section className="mb-8">
-              <h2 className="font-display text-2xl tracking-wide text-gold mb-3">In progress</h2>
+              <h2 className="font-display text-2xl tracking-wide text-gold mb-3">
+                In progress ({(progressLive?.length ?? 0) + (progressSolo?.length ?? 0)})
+              </h2>
               <ul className="divide-y divide-board bg-board-deep/40 border border-gold/30 rounded-lg overflow-hidden">
                 {progressLive?.map((g) => (
                   <li key={g.code} className="flex items-center gap-3 px-4 py-3">
@@ -192,7 +194,7 @@ export default function MyScoresPage() {
           </p>
         ) : (
           <>
-          <h2 className="font-display text-2xl tracking-wide text-gold mb-3">Completed</h2>
+          <h2 className="font-display text-2xl tracking-wide text-gold mb-3">Completed ({scores.length})</h2>
           <ol className="divide-y divide-board bg-board-deep/40 border border-board rounded-lg overflow-hidden">
             {scores.map((row) => (
               <li key={row.date} className="flex items-center gap-3 px-4 py-3">
