@@ -84,17 +84,36 @@ function nextAutoAdvanceCell(
 ): { row: number; col: number } | null {
   const cols = round.categories.length;
   const rows = 5;
+  const isOpen = (row: number, col: number) => {
+    const clue = round.categories[col]?.clues[row];
+    return !!clue && !(clue.id in answered);
+  };
+
   if (mode === "value") {
+    // Same value tier (row) first, cycling through categories.
     for (let i = 1; i <= cols; i++) {
       const col = (from.col + i) % cols;
-      const clue = round.categories[col]?.clues[from.row];
-      if (clue && !(clue.id in answered)) return { row: from.row, col };
+      if (isOpen(from.row, col)) return { row: from.row, col };
+    }
+    // Row's exhausted — cascade down through the remaining rows, in order.
+    for (let r = 1; r < rows; r++) {
+      const row = (from.row + r) % rows;
+      for (let col = 0; col < cols; col++) {
+        if (isOpen(row, col)) return { row, col };
+      }
     }
   } else if (mode === "category") {
+    // Same category (column) first, cycling through values.
     for (let i = 1; i <= rows; i++) {
       const row = (from.row + i) % rows;
-      const clue = round.categories[from.col]?.clues[row];
-      if (clue && !(clue.id in answered)) return { row, col: from.col };
+      if (isOpen(row, from.col)) return { row, col: from.col };
+    }
+    // Category's exhausted — cascade across the remaining categories, in order.
+    for (let c = 1; c < cols; c++) {
+      const col = (from.col + c) % cols;
+      for (let row = 0; row < rows; row++) {
+        if (isOpen(row, col)) return { row, col };
+      }
     }
   }
   return null;
