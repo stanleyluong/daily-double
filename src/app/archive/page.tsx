@@ -59,10 +59,16 @@ function ArchivePageInner() {
   // Picking a board for an existing lobby (came from "Browse Archive" on
   // /live/{code}) rather than browsing to start a fresh game.
   const forGame = searchParams.get("forGame");
+  // Filter state initializes from (and writes back to) the URL, so a filtered
+  // view survives refresh and can be shared/bookmarked (/archive?kind=custom).
+  const urlKind = searchParams.get("kind");
+  const initialKind: ArchiveKindFilter =
+    urlKind === "daily" || urlKind === "historical" || urlKind === "custom" ? urlKind : "all";
+  const initialQuery = searchParams.get("q") ?? "";
   const [rows, setRows] = useState<HistoricalSummary[] | null>(null);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(""); // the query actually applied
-  const [kind, setKind] = useState<ArchiveKindFilter>("all");
+  const [query, setQuery] = useState(initialQuery);
+  const [active, setActive] = useState(initialQuery); // the query actually applied
+  const [kind, setKind] = useState<ArchiveKindFilter>(initialKind);
   const [asc, setAsc] = useState(false); // date sort direction; false = newest first
   const [loading, setLoading] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
@@ -140,12 +146,27 @@ function ArchivePageInner() {
   }, []);
 
   useEffect(() => {
-    load("", "all");
+    load(initialQuery.trim(), initialKind);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reflect the applied filters back into the URL (replace, not push — the
+  // back button shouldn't step through every filter click).
+  const syncUrl = useCallback(
+    (q: string, k: ArchiveKindFilter) => {
+      const params = new URLSearchParams();
+      if (forGame) params.set("forGame", forGame);
+      if (k !== "all") params.set("kind", k);
+      if (q) params.set("q", q);
+      const qs = params.toString();
+      router.replace(`/archive${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [forGame, router]
+  );
+
   const changeKind = (k: ArchiveKindFilter) => {
     setKind(k);
+    syncUrl(query.trim(), k);
     load(query.trim(), k);
   };
 
@@ -204,6 +225,7 @@ function ArchivePageInner() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            syncUrl(query.trim(), kind);
             load(query.trim(), kind);
           }}
           className="flex gap-3 max-w-lg mx-auto mb-6"
@@ -225,6 +247,7 @@ function ArchivePageInner() {
               type="button"
               onClick={() => {
                 setQuery("");
+                syncUrl("", kind);
                 load("", kind);
               }}
               className="text-blue-200/60 hover:text-blue-100 text-sm px-2"
