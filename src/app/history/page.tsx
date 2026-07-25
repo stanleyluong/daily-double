@@ -14,6 +14,21 @@ const KIND_LABEL: Record<GameKind, string> = {
   custom: "Custom",
 };
 
+type TypeFilter = "all" | GameKind;
+const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "daily", label: "AI daily" },
+  { value: "historical", label: "Real episode" },
+  { value: "custom", label: "Custom" },
+];
+
+type ProgressFilter = "all" | "in_progress" | "completed";
+const PROGRESS_FILTERS: { value: ProgressFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "in_progress", label: "In progress" },
+  { value: "completed", label: "Completed" },
+];
+
 function boardLabel(row: GameHistoryRow): string {
   return row.liveCode
     ? `Live game ${row.liveCode}`
@@ -79,6 +94,9 @@ export default function MyScoresPage() {
   const [error, setError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("lastPlayed");
   const [sortDesc, setSortDesc] = useState(true);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [progressFilter, setProgressFilter] = useState<ProgressFilter>("all");
+  const [query, setQuery] = useState("");
 
   const toggleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -89,9 +107,18 @@ export default function MyScoresPage() {
     }
   };
 
-  const sortedHistory = useMemo(() => {
+  const visibleHistory = useMemo(() => {
     if (!history) return null;
-    const rows = [...history];
+    const q = query.trim().toLowerCase();
+    const rows = history.filter((row) => {
+      if (typeFilter !== "all" && row.kind !== typeFilter) return false;
+      if (progressFilter !== "all" && row.progress !== progressFilter) return false;
+      if (q) {
+        const haystack = `${boardLabel(row)} ${row.players.join(" ")}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
     rows.sort((a, b) => {
       const va = sortValue(a, sortKey);
       const vb = sortValue(b, sortKey);
@@ -99,7 +126,7 @@ export default function MyScoresPage() {
       return sortDesc ? -cmp : cmp;
     });
     return rows;
-  }, [history, sortKey, sortDesc]);
+  }, [history, sortKey, sortDesc, typeFilter, progressFilter, query]);
 
   useEffect(() => {
     if (!user) return;
@@ -190,6 +217,48 @@ export default function MyScoresPage() {
           </div>
         )}
 
+        {user && history && history.length > 0 && (
+          <div className="flex flex-col gap-3 mb-4">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {TYPE_FILTERS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => setTypeFilter(f.value)}
+                  className={`font-display text-sm tracking-wide px-3 py-1 rounded-full border transition-colors ${
+                    typeFilter === f.value
+                      ? "bg-gold text-board-deep border-gold"
+                      : "border-blue-300/30 text-blue-200/70 hover:text-blue-100 hover:border-blue-300/50"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+              <span className="text-blue-200/30 mx-1">·</span>
+              {PROGRESS_FILTERS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => setProgressFilter(f.value)}
+                  className={`font-display text-sm tracking-wide px-3 py-1 rounded-full border transition-colors ${
+                    progressFilter === f.value
+                      ? "bg-gold text-board-deep border-gold"
+                      : "border-blue-300/30 text-blue-200/70 hover:text-blue-100 hover:border-blue-300/50"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by board or player…"
+              className="w-full max-w-sm mx-auto rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2 text-sm placeholder:text-blue-200/40"
+            />
+          </div>
+        )}
+
         {loading ? (
           <p className="text-center text-blue-200/50 py-16">Loading…</p>
         ) : !user ? (
@@ -204,6 +273,8 @@ export default function MyScoresPage() {
           <p className="text-center text-blue-200/50 py-16">
             No games yet — play today&apos;s board to get started.
           </p>
+        ) : visibleHistory && visibleHistory.length === 0 ? (
+          <p className="text-center text-blue-200/50 py-16">No games match your filters.</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-board">
             <table className="w-full text-sm">
@@ -225,7 +296,7 @@ export default function MyScoresPage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedHistory!.map((row) => {
+                {visibleHistory!.map((row) => {
                   const label = boardLabel(row);
                   return (
                     <tr key={row.id} className="border-t border-board hover:bg-board-deep/40">
