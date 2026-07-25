@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import type { MyScoreRow } from "@/lib/scores";
 import type { RankedStats } from "@/lib/liveTypes";
@@ -13,6 +13,49 @@ const KIND_LABEL: Record<GameKind, string> = {
   historical: "Real episode",
   custom: "Custom",
 };
+
+function boardLabel(row: GameHistoryRow): string {
+  return row.liveCode
+    ? `Live game ${row.liveCode}`
+    : row.boardKey.startsWith("custom-")
+      ? "Custom board"
+      : formatBoardDate(row.boardKey);
+}
+
+type SortKey = "board" | "type" | "players" | "progress" | "created" | "lastPlayed" | "score";
+
+const SORT_COLUMNS: { key: SortKey; label: string; align?: "right" }[] = [
+  { key: "board", label: "Board" },
+  { key: "type", label: "Type" },
+  { key: "players", label: "Players" },
+  { key: "progress", label: "Progress" },
+  { key: "created", label: "Created" },
+  { key: "lastPlayed", label: "Last played" },
+  { key: "score", label: "Score", align: "right" },
+];
+
+// Dates/score default to newest-or-highest-first on first click; text columns
+// default to A→Z — whichever reads as the more useful starting order.
+const DEFAULT_DESC: Partial<Record<SortKey, boolean>> = { created: true, lastPlayed: true, score: true };
+
+function sortValue(row: GameHistoryRow, key: SortKey): string | number {
+  switch (key) {
+    case "board":
+      return boardLabel(row);
+    case "type":
+      return KIND_LABEL[row.kind];
+    case "players":
+      return row.players.length > 0 ? row.players.join(", ") : "Solo";
+    case "progress":
+      return row.progress;
+    case "created":
+      return row.createdAt ?? "";
+    case "lastPlayed":
+      return row.lastPlayedAt ?? "";
+    case "score":
+      return row.myScore;
+  }
+}
 
 function StatTile({ label, value }: { label: string; value: string }) {
   return (
@@ -34,6 +77,29 @@ export default function MyScoresPage() {
   const [rank, setRank] = useState<RankedStats | null>(null);
   const [history, setHistory] = useState<GameHistoryRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("lastPlayed");
+  const [sortDesc, setSortDesc] = useState(true);
+
+  const toggleSort = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDesc((d) => !d);
+    } else {
+      setSortKey(key);
+      setSortDesc(DEFAULT_DESC[key] ?? false);
+    }
+  };
+
+  const sortedHistory = useMemo(() => {
+    if (!history) return null;
+    const rows = [...history];
+    rows.sort((a, b) => {
+      const va = sortValue(a, sortKey);
+      const vb = sortValue(b, sortKey);
+      const cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb));
+      return sortDesc ? -cmp : cmp;
+    });
+    return rows;
+  }, [history, sortKey, sortDesc]);
 
   useEffect(() => {
     if (!user) return;
@@ -143,36 +209,24 @@ export default function MyScoresPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-board-deep/60">
-                  <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
-                    Board
-                  </th>
-                  <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
-                    Type
-                  </th>
-                  <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
-                    Players
-                  </th>
-                  <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
-                    Progress
-                  </th>
-                  <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
-                    Created
-                  </th>
-                  <th className="text-left px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
-                    Last played
-                  </th>
-                  <th className="text-right px-4 py-3 font-display tracking-wide text-blue-200/60 uppercase text-xs">
-                    Score
-                  </th>
+                  {SORT_COLUMNS.map((col) => (
+                    <th
+                      key={col.key}
+                      className={`px-4 py-3 ${col.align === "right" ? "text-right" : "text-left"}`}
+                    >
+                      <button
+                        onClick={() => toggleSort(col.key)}
+                        className="font-display tracking-wide text-blue-200/60 hover:text-gold uppercase text-xs transition-colors"
+                      >
+                        {col.label} {sortKey === col.key && (sortDesc ? "↓" : "↑")}
+                      </button>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {history.map((row) => {
-                  const label = row.liveCode
-                    ? `Live game ${row.liveCode}`
-                    : row.boardKey.startsWith("custom-")
-                      ? "Custom board"
-                      : formatBoardDate(row.boardKey);
+                {sortedHistory!.map((row) => {
+                  const label = boardLabel(row);
                   return (
                     <tr key={row.id} className="border-t border-board hover:bg-board-deep/40">
                       <td className="px-4 py-3 align-top">
