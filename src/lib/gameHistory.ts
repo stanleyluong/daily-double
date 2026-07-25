@@ -1,5 +1,6 @@
 import { db } from "@/lib/firebaseAdmin";
 import { answeredCluesForDate, summarize } from "@/lib/answers";
+import { customBoardLabel } from "@/lib/jeopardy";
 
 // One unified "everything I've ever played" list — replaces what used to be
 // three separate sections (solo in-progress, live in-progress, finished
@@ -19,6 +20,7 @@ export interface GameHistoryRow {
   kind: GameKind;
   boardKey: string; // the underlying board's date, or custom-{id}
   liveCode: string | null; // set only for live (multiplayer) rows
+  customLabel: string | null; // custom boards only: creator's name for it, else its category list
   players: string[]; // co-players; empty means solo
   progress: GameProgress;
   createdAt: string | null; // ISO — when this session was first started
@@ -41,6 +43,30 @@ export async function gameHistory(uid: string): Promise<GameHistoryRow[]> {
   const scoresByKey = new Map<string, number>();
   scoresSnap.forEach((d) => scoresByKey.set(d.id, Number(d.get("score") ?? 0)));
 
+  // Resolve display labels for every custom board involved (solo or live) in
+  // one batched read, so custom rows never show as an indistinguishable
+  // "Custom board".
+  const customIds = new Set<string>();
+  playedSnap.forEach((d) => {
+    const k = d.get("boardKey") as string | undefined;
+    if (k?.startsWith("custom-")) customIds.add(k.slice(7));
+  });
+  liveSnap.forEach((d) => {
+    const k = d.get("boardDate") as string | undefined;
+    if (k?.startsWith("custom-")) customIds.add(k.slice(7));
+  });
+  const customLabels = new Map<string, string>();
+  if (customIds.size > 0) {
+    const docs = await db().getAll(
+      ...Array.from(customIds).map((id) => db().collection("customBoards").doc(id))
+    );
+    for (const doc of docs) {
+      if (!doc.exists) continue;
+      const cats = (doc.get("categoryTitles") as string[] | undefined) ?? [];
+      customLabels.set(`custom-${doc.id}`, customBoardLabel(doc.get("name") as string | undefined, cats));
+    }
+  }
+
   const rows: GameHistoryRow[] = [];
 
   await Promise.all(
@@ -58,6 +84,7 @@ export async function gameHistory(uid: string): Promise<GameHistoryRow[]> {
         kind: kindOf(boardKey),
         boardKey,
         liveCode: null,
+        customLabel: customLabels.get(boardKey) ?? null,
         players: [],
         progress: submittedScore !== undefined ? "completed" : "in_progress",
         createdAt: firstPlayedAt ? firstPlayedAt.toDate().toISOString() : null,
@@ -85,6 +112,7 @@ export async function gameHistory(uid: string): Promise<GameHistoryRow[]> {
       kind: kindOf(boardKey),
       boardKey,
       liveCode: d.id,
+      customLabel: customLabels.get(boardKey) ?? null,
       players: players.filter((p) => p.uid !== uid).map((p) => p.name),
       progress: g.status === "finished" ? "completed" : "in_progress",
       createdAt: createdAt ? createdAt.toDate().toISOString() : null,

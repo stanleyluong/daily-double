@@ -32,11 +32,9 @@ const PROGRESS_FILTERS: { value: ProgressFilter; label: string }[] = [
 ];
 
 function boardLabel(row: GameHistoryRow): string {
-  return row.liveCode
-    ? `Live game ${row.liveCode}`
-    : row.boardKey.startsWith("custom-")
-      ? "Custom board"
-      : formatBoardDate(row.boardKey);
+  if (row.liveCode) return `Live game ${row.liveCode}`;
+  if (row.boardKey.startsWith("custom-")) return row.customLabel ?? "Custom board";
+  return formatBoardDate(row.boardKey);
 }
 
 type SortKey = "board" | "type" | "players" | "progress" | "created" | "lastPlayed" | "score";

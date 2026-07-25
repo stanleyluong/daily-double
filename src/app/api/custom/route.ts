@@ -18,10 +18,12 @@ export async function POST(request: Request) {
 
   let categories: string[] = [];
   let roundCount: 1 | 2 = 1;
+  let name = "";
   try {
-    const body = (await request.json()) as { categories?: unknown; rounds?: unknown };
+    const body = (await request.json()) as { categories?: unknown; rounds?: unknown; name?: unknown };
     if (Array.isArray(body.categories)) categories = body.categories.map((c) => String(c));
     if (body.rounds === 2 || body.rounds === "2") roundCount = 2;
+    if (typeof body.name === "string") name = body.name;
   } catch {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
@@ -29,7 +31,7 @@ export async function POST(request: Request) {
   if (clean.length === 0) return NextResponse.json({ error: "Enter at least one category." }, { status: 400 });
 
   try {
-    const key = await createCustomBoard(uid, clean, roundCount);
+    const key = await createCustomBoard(uid, clean, roundCount, name);
     return NextResponse.json({ key }); // "custom-{id}"
   } catch (error) {
     console.error("custom board generation failed:", error);

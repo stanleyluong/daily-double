@@ -284,7 +284,11 @@ function ArchivePageInner() {
                             b.kind === "daily" ? "text-gold/70" : b.kind === "custom" ? "text-blue-200/50" : "text-blue-200/40"
                           }`}
                         >
-                          {b.kind === "historical" ? `#${b.showNumber} · ${KIND_BADGE.historical}` : KIND_BADGE[b.kind]}
+                          {b.kind === "historical"
+                            ? `#${b.showNumber} · ${KIND_BADGE.historical}`
+                            : b.kind === "custom" && b.name
+                              ? `${b.name} · ${KIND_BADGE.custom}`
+                              : KIND_BADGE[b.kind]}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-blue-200/80 leading-relaxed">

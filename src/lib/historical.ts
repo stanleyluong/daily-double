@@ -20,6 +20,7 @@ export interface HistoricalSummary {
   date: string; // sort/URL key: YYYY-MM-DD (daily/historical) or custom-{id} (custom)
   kind: ArchiveKind;
   showNumber?: number; // historical only
+  name?: string; // custom only — the creator's title for the board, when given
   categoryTitles: string[];
   createdAt?: string; // ISO timestamp — custom only, since `date` isn't a real date there
 }
@@ -43,7 +44,7 @@ export async function searchHistorical(
       : null,
     kind === "all" || kind === "daily" ? db().collection(DAILY_BOARDS).select("categoryTitles").get() : null,
     kind === "all" || kind === "custom"
-      ? db().collection(CUSTOM_BOARDS).select("categoryTitles", "createdAt").get()
+      ? db().collection(CUSTOM_BOARDS).select("name", "categoryTitles", "createdAt").get()
       : null,
   ]);
 
@@ -71,11 +72,13 @@ export async function searchHistorical(
 
   for (const doc of customSnap?.docs ?? []) {
     const cats = (doc.get("categoryTitles") as string[] | undefined) ?? [];
-    if (q && !cats.some((c) => c.toLowerCase().includes(q))) continue;
+    const name = (doc.get("name") as string | null | undefined) ?? undefined;
+    if (q && !cats.some((c) => c.toLowerCase().includes(q)) && !(name ?? "").toLowerCase().includes(q)) continue;
     const ts = doc.get("createdAt") as FirebaseFirestore.Timestamp | undefined;
     rows.push({
       date: `custom-${doc.id}`,
       kind: "custom",
+      name,
       categoryTitles: cats,
       createdAt: ts ? ts.toDate().toISOString() : undefined,
     });

@@ -679,21 +679,36 @@ export async function generateCustomBoard(titles: string[], roundCount: 1 | 2 = 
 
 // Generates + persists a custom board, returning its play key (`custom-{id}`)
 // which the whole play/judge flow already understands via getBoardForDate.
+// `name` is an optional creator-given title; when absent, UIs fall back to
+// the board's category list so two custom boards never look identical.
 export async function createCustomBoard(
   uid: string,
   titles: string[],
-  roundCount: 1 | 2 = 1
+  roundCount: 1 | 2 = 1,
+  name?: string
 ): Promise<string> {
   const board = await generateCustomBoard(titles, roundCount);
   const id = randomUUID().replace(/-/g, "").slice(0, 12);
+  const cleanName = (name ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
   await db().collection(CUSTOM_BOARDS).doc(id).set({
     ownerUid: uid,
+    name: cleanName || null,
     rounds: board.rounds,
     final: board.final ?? null,
     categoryTitles: board.rounds.flatMap((r) => r.categories.map((c) => c.title)),
     createdAt: FieldValue.serverTimestamp(),
   });
   return `custom-${id}`;
+}
+
+// Display label for a custom board: the creator's name for it, else its
+// category list — never the bare, indistinguishable words "Custom board".
+export function customBoardLabel(name: string | null | undefined, categoryTitles: string[]): string {
+  const n = (name ?? "").trim();
+  if (n) return n;
+  if (categoryTitles.length === 0) return "Custom board";
+  const shown = categoryTitles.slice(0, 3).join(" · ");
+  return categoryTitles.length > 3 ? `${shown} …` : shown;
 }
 
 // Everyone worldwide plays the same board; the day rolls over on US Pacific time.

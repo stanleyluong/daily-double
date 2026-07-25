@@ -79,6 +79,7 @@ function CreateBoardPageInner() {
   const forGame = searchParams.get("forGame");
   const [rounds, setRounds] = useState<1 | 2>(1);
   const [cats, setCats] = useState<string[]>(Array(12).fill(""));
+  const [boardName, setBoardName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAuth, setShowAuth] = useState(false);
@@ -98,7 +99,7 @@ function CreateBoardPageInner() {
       const res = await fetch("/api/custom", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ categories: active, rounds }),
+        body: JSON.stringify({ categories: active, rounds, name: boardName }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Couldn't generate the board.");
@@ -168,6 +169,14 @@ function CreateBoardPageInner() {
                 );
               })}
             </div>
+
+            <input
+              value={boardName}
+              onChange={(e) => setBoardName(e.target.value)}
+              maxLength={60}
+              placeholder="Board name (optional — e.g. Movie Night Trivia)"
+              className="w-full rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2.5 mb-4 placeholder:text-blue-200/30"
+            />
 
             <div className="flex justify-end mb-2">
               <button
