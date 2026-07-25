@@ -927,6 +927,36 @@ export default function Game({ date }: { date?: string }) {
     }
   };
 
+  // Share the result-card PNG through the native share sheet where one exists
+  // (mobile: straight into iMessage/Discord/etc.) — otherwise fall back to
+  // opening the image in a new tab like the old link did. Uses the real
+  // `score`, not the animated display value, so a click mid-animation can't
+  // bake a wrong number into the image.
+  const shareImage = async () => {
+    if (!board) return;
+    const url = `/api/share-image?${new URLSearchParams({
+      date: board.date,
+      score: String(score),
+      correct: String(counts.correct),
+      wrong: String(counts.wrong),
+      passed: String(counts.passed),
+    }).toString()}`;
+    try {
+      if (navigator.share) {
+        const blob = await (await fetch(url)).blob();
+        const file = new File([blob], `daily-double-${board.date}.png`, { type: "image/png" });
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], title: "Daily Double", text: `My Daily Double score: ${formatMoney(score)}` });
+          return;
+        }
+      }
+    } catch (e) {
+      // AbortError = user closed the sheet; that's not a fallback case.
+      if (e instanceof Error && e.name === "AbortError") return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   /* ---------- render ---------- */
 
   if (notFound) {
@@ -1210,20 +1240,12 @@ export default function Game({ date }: { date?: string }) {
                 {copied ? "Copied to clipboard!" : "Share result"}
                 {!copied && <span aria-hidden>📋</span>}
               </button>
-              <a
-                href={`/api/share-image?${new URLSearchParams({
-                  date: board.date,
-                  score: String(displayedScore),
-                  correct: String(counts.correct),
-                  wrong: String(counts.wrong),
-                  passed: String(counts.passed),
-                }).toString()}`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={shareImage}
                 className="inline-flex items-center gap-2 font-display tracking-wider bg-board hover:bg-board-deep border border-gold/40 text-gold px-5 py-2 rounded"
               >
                 Share image <span aria-hidden>🖼</span>
-              </a>
+              </button>
             </div>
           </div>
 
