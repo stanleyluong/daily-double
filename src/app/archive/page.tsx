@@ -6,6 +6,8 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import type { ArchiveKindFilter, HistoricalSummary } from "@/lib/historical";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
+import FilterPills from "@/components/FilterPills";
+import SkeletonRows from "@/components/SkeletonRows";
 import { liveCreate, liveSetBoard } from "@/lib/liveActions";
 
 const KIND_FILTERS: { value: ArchiveKindFilter; label: string }[] = [
@@ -195,21 +197,8 @@ function ArchivePageInner() {
         </header>
         {pickError && <p className="text-center text-red-300 text-sm mb-4">{pickError}</p>}
 
-        <div className="flex justify-center gap-2 mb-4">
-          {KIND_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              type="button"
-              onClick={() => changeKind(f.value)}
-              className={`font-display text-sm tracking-wide px-4 py-1.5 rounded-full border transition-colors ${
-                kind === f.value
-                  ? "bg-gold text-board-deep border-gold"
-                  : "border-blue-300/30 text-blue-200/70 hover:text-blue-100 hover:border-blue-300/50"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+        <div className="mb-4">
+          <FilterPills options={KIND_FILTERS} value={kind} onChange={changeKind} />
         </div>
 
         <form
@@ -255,7 +244,11 @@ function ArchivePageInner() {
                 : `${sorted!.length} most recent board${sorted!.length === 1 ? "" : "s"}`}
         </p>
 
-        {sorted && sorted.length > 0 && (
+        {rows === null ? (
+          <SkeletonRows rows={8} cols={4} />
+        ) : (
+          sorted &&
+          sorted.length > 0 && (
           <div className="overflow-x-auto rounded-lg border border-board">
             <table className="w-full text-sm">
               <thead>
@@ -328,9 +321,10 @@ function ArchivePageInner() {
               </tbody>
             </table>
           </div>
+          )
         )}
 
-        {sorted && sorted.length === 0 && !loading && (
+        {rows !== null && sorted && sorted.length === 0 && !loading && (
           <p className="text-center text-blue-200/50 py-16">
             {active ? `No boards found with a category matching “${active}”.` : "No boards found."}
           </p>

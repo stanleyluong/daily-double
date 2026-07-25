@@ -7,6 +7,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { useDm } from "@/components/DmProvider";
 import { useFriends } from "@/components/FriendsProvider";
 import AuthModal from "@/components/AuthModal";
+import SkeletonRows from "@/components/SkeletonRows";
 import { acceptFriend, addFriend, declineFriend, inviteFriend } from "@/lib/friendsClient";
 import { liveCreate, liveJoin } from "@/lib/liveActions";
 
@@ -151,7 +152,7 @@ export default function FriendsPage() {
                 Your friends {data ? `(${data.friends.length})` : ""}
               </p>
               {!data ? (
-                <p className="text-blue-200/50 text-sm">Loading…</p>
+                <SkeletonRows rows={3} cols={3} />
               ) : data.friends.length === 0 ? (
                 <p className="text-blue-200/50 text-sm">No friends yet — add someone by their email above.</p>
               ) : (

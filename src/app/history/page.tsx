@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import FilterPills from "@/components/FilterPills";
+import SkeletonRows from "@/components/SkeletonRows";
 import type { MyScoreRow } from "@/lib/scores";
 import type { RankedStats } from "@/lib/liveTypes";
 import type { GameHistoryRow, GameKind } from "@/lib/gameHistory";
@@ -220,35 +222,9 @@ export default function MyScoresPage() {
         {user && history && history.length > 0 && (
           <div className="flex flex-col gap-3 mb-4">
             <div className="flex flex-wrap items-center justify-center gap-2">
-              {TYPE_FILTERS.map((f) => (
-                <button
-                  key={f.value}
-                  type="button"
-                  onClick={() => setTypeFilter(f.value)}
-                  className={`font-display text-sm tracking-wide px-3 py-1 rounded-full border transition-colors ${
-                    typeFilter === f.value
-                      ? "bg-gold text-board-deep border-gold"
-                      : "border-blue-300/30 text-blue-200/70 hover:text-blue-100 hover:border-blue-300/50"
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
+              <FilterPills options={TYPE_FILTERS} value={typeFilter} onChange={setTypeFilter} />
               <span className="text-blue-200/30 mx-1">·</span>
-              {PROGRESS_FILTERS.map((f) => (
-                <button
-                  key={f.value}
-                  type="button"
-                  onClick={() => setProgressFilter(f.value)}
-                  className={`font-display text-sm tracking-wide px-3 py-1 rounded-full border transition-colors ${
-                    progressFilter === f.value
-                      ? "bg-gold text-board-deep border-gold"
-                      : "border-blue-300/30 text-blue-200/70 hover:text-blue-100 hover:border-blue-300/50"
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
+              <FilterPills options={PROGRESS_FILTERS} value={progressFilter} onChange={setProgressFilter} />
             </div>
             <input
               value={query}
@@ -268,7 +244,7 @@ export default function MyScoresPage() {
         ) : error ? (
           <p className="text-center text-red-300 py-16">{error}</p>
         ) : history === null ? (
-          <p className="text-center text-blue-200/50 py-16">Loading your games…</p>
+          <SkeletonRows rows={6} cols={7} />
         ) : history.length === 0 ? (
           <p className="text-center text-blue-200/50 py-16">
             No games yet — play today&apos;s board to get started.
