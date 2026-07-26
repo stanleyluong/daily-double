@@ -1,5 +1,5 @@
 import { db } from "@/lib/firebaseAdmin";
-import { answeredCluesForDate, summarize } from "@/lib/answers";
+import { answeredScoreByDate } from "@/lib/answers";
 import { customBoardLabel } from "@/lib/jeopardy";
 
 // One unified "everything I've ever played" list — replaces what used to be
@@ -34,10 +34,13 @@ function kindOf(key: string): GameKind {
 }
 
 export async function gameHistory(uid: string): Promise<GameHistoryRow[]> {
-  const [playedSnap, scoresSnap, liveSnap] = await Promise.all([
+  const [playedSnap, scoresSnap, liveSnap, runningScores] = await Promise.all([
     db().collection("users").doc(uid).collection("playedBoards").get(),
     db().collection("users").doc(uid).collection("scores").get(),
     db().collection("liveGames").where("playerUids", "array-contains", uid).get(),
+    // One read covering the running score of every in-progress board, instead
+    // of a per-board answeredClues query below (an N+1 as boards accumulate).
+    answeredScoreByDate(uid),
   ]);
 
   const scoresByKey = new Map<string, number>();
@@ -69,31 +72,27 @@ export async function gameHistory(uid: string): Promise<GameHistoryRow[]> {
 
   const rows: GameHistoryRow[] = [];
 
-  await Promise.all(
-    playedSnap.docs.map(async (d) => {
-      const boardKey = d.get("boardKey") as string | undefined;
-      if (!boardKey) return;
-      const firstPlayedAt = d.get("firstPlayedAt") as FirebaseFirestore.Timestamp | undefined;
-      const lastPlayedAt = d.get("lastPlayedAt") as FirebaseFirestore.Timestamp | undefined;
-      const submittedScore = scoresByKey.get(boardKey);
-      const href = boardKey.startsWith("custom-") ? `/custom/${boardKey.slice(7)}` : `/boards/${boardKey}`;
-      const myScore =
-        submittedScore !== undefined ? submittedScore : summarize(await answeredCluesForDate(uid, boardKey)).score;
-      rows.push({
-        id: `solo-${boardKey}`,
-        kind: kindOf(boardKey),
-        boardKey,
-        liveCode: null,
-        customLabel: customLabels.get(boardKey) ?? null,
-        players: [],
-        progress: submittedScore !== undefined ? "completed" : "in_progress",
-        createdAt: firstPlayedAt ? firstPlayedAt.toDate().toISOString() : null,
-        lastPlayedAt: lastPlayedAt ? lastPlayedAt.toDate().toISOString() : null,
-        myScore,
-        href,
-      });
-    })
-  );
+  playedSnap.forEach((d) => {
+    const boardKey = d.get("boardKey") as string | undefined;
+    if (!boardKey) return;
+    const firstPlayedAt = d.get("firstPlayedAt") as FirebaseFirestore.Timestamp | undefined;
+    const lastPlayedAt = d.get("lastPlayedAt") as FirebaseFirestore.Timestamp | undefined;
+    const submittedScore = scoresByKey.get(boardKey);
+    const href = boardKey.startsWith("custom-") ? `/custom/${boardKey.slice(7)}` : `/boards/${boardKey}`;
+    rows.push({
+      id: `solo-${boardKey}`,
+      kind: kindOf(boardKey),
+      boardKey,
+      liveCode: null,
+      customLabel: customLabels.get(boardKey) ?? null,
+      players: [],
+      progress: submittedScore !== undefined ? "completed" : "in_progress",
+      createdAt: firstPlayedAt ? firstPlayedAt.toDate().toISOString() : null,
+      lastPlayedAt: lastPlayedAt ? lastPlayedAt.toDate().toISOString() : null,
+      myScore: submittedScore ?? runningScores.get(boardKey) ?? 0,
+      href,
+    });
+  });
 
   // Live (unranked only — ranked has its own record on /rankings; lobby-phase
   // excluded — nothing's actually been played there yet).

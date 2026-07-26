@@ -79,6 +79,24 @@ export async function recordAnsweredClue(
   return fromDoc(written.data()!);
 }
 
+// Running score per board key across EVERY board this account has touched,
+// in a single collection read — for callers (gameHistory) that would
+// otherwise loop answeredCluesForDate once per board.
+export async function answeredScoreByDate(uid: string): Promise<Map<string, number>> {
+  const snap = await db().collection("users").doc(uid).collection("answeredClues").get();
+  const byDate = new Map<string, AnsweredClue[]>();
+  snap.forEach((doc) => {
+    const date = String(doc.get("date") ?? "");
+    if (!date) return;
+    const list = byDate.get(date) ?? [];
+    list.push(fromDoc(doc.data()));
+    byDate.set(date, list);
+  });
+  const out = new Map<string, number>();
+  for (const [date, clues] of byDate) out.set(date, summarize(clues).score);
+  return out;
+}
+
 export async function answeredCluesForDate(uid: string, date: string): Promise<AnsweredClue[]> {
   const snap = await db()
     .collection("users")
