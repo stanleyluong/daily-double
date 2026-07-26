@@ -58,7 +58,7 @@ export default function OnboardingTour() {
         <p className="font-display text-2xl tracking-wide text-gold mb-2">{s.title}</p>
         <p className="text-blue-100/80 text-sm leading-relaxed mb-6">{s.body}</p>
         <div className="flex items-center justify-between">
-          <button onClick={close} className="text-sm text-blue-200/50 hover:text-blue-100">
+          <button onClick={close} className="text-sm text-blue-200/60 hover:text-blue-100">
             Skip
           </button>
           <button

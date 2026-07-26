@@ -164,7 +164,7 @@ export default function LiveEntryPage() {
         </header>
 
         {loading ? (
-          <p className="text-center text-blue-200/50 py-10">Loading…</p>
+          <p className="text-center text-blue-200/60 py-10">Loading…</p>
         ) : !user ? (
           <div className="text-center bg-board-deep/60 border border-board rounded-lg p-8">
             <p className="text-blue-200/80 mb-4">Sign in to start or join a game.</p>
@@ -191,7 +191,7 @@ export default function LiveEntryPage() {
                 </button>
               ))}
             </div>
-            <p className="text-center text-xs text-blue-200/50 -mt-3">
+            <p className="text-center text-xs text-blue-200/60 -mt-3">
               {mode === "normal"
                 ? "Casual — any player can pause the game anytime."
                 : "Counts toward your rating. No pausing; needs 2+ players."}
@@ -207,7 +207,7 @@ export default function LiveEntryPage() {
                     <li>⚡ Only the fastest correct answer scores</li>
                     <li>🏆 Fastest correct answerer picks next</li>
                   </ul>
-                  <p className="text-xs text-blue-200/50 mt-3">
+                  <p className="text-xs text-blue-200/60 mt-3">
                     Every rated game uses these settings so the ladder stays fair.
                   </p>
                 </div>
@@ -247,7 +247,7 @@ export default function LiveEntryPage() {
                           className={`text-xs px-2.5 py-1 rounded-full border ${
                             match.readyUids.includes(p.uid)
                               ? "border-green-400/40 text-green-300"
-                              : "border-blue-300/20 text-blue-200/40"
+                              : "border-blue-300/20 text-blue-200/60"
                           }`}
                         >
                           {p.uid === user?.uid ? "You" : p.name} {match.readyUids.includes(p.uid) ? "✓" : "…"}
@@ -281,7 +281,7 @@ export default function LiveEntryPage() {
               <>
                 {/* Board source */}
                 <div>
-                  <p className="text-xs uppercase tracking-wider text-blue-200/40 mb-2">Board</p>
+                  <p className="text-xs uppercase tracking-wider text-blue-200/60 mb-2">Board</p>
               <div className="grid grid-cols-3 gap-2 p-1 bg-board-deep rounded-lg">
                 {(
                   [
@@ -302,13 +302,13 @@ export default function LiveEntryPage() {
                 ))}
               </div>
               {source === "unplayed" && (
-                <p className="text-xs text-blue-200/50 mt-2">
+                <p className="text-xs text-blue-200/60 mt-2">
                   A real Jeopardy! episode you haven&apos;t played yet, picked at random.
                 </p>
               )}
               {source === "custom" && (
                 <div className="mt-3 space-y-2">
-                  <p className="text-xs text-blue-200/50">Name up to 6 categories; Claude writes the clues.</p>
+                  <p className="text-xs text-blue-200/60">Name up to 6 categories; Claude writes the clues.</p>
                   {cats.map((c, i) => (
                     <input
                       key={i}
@@ -316,12 +316,12 @@ export default function LiveEntryPage() {
                       onChange={(e) => setCats((arr) => arr.map((x, j) => (j === i ? e.target.value : x)))}
                       maxLength={60}
                       placeholder={`Category ${i + 1}`}
-                      className="w-full rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-3 py-2 text-sm placeholder:text-blue-200/30"
+                      className="w-full rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-3 py-2 text-sm placeholder:text-blue-200/60"
                     />
                   ))}
                 </div>
               )}
-              <p className="text-center text-[11px] text-blue-200/40 mt-2">
+              <p className="text-center text-[11px] text-blue-200/60 mt-2">
                 Want a real historical episode?{" "}
                 <Link href="/archive" className="text-gold/70 hover:text-gold underline">
                   Pick one from the archive
@@ -332,7 +332,7 @@ export default function LiveEntryPage() {
 
             {/* Answer timer setting */}
             <div>
-              <p className="text-xs uppercase tracking-wider text-blue-200/40 mb-2">
+              <p className="text-xs uppercase tracking-wider text-blue-200/60 mb-2">
                 Answer timer · {answerMs / 1000}s
               </p>
               <div className="grid grid-cols-5 gap-2">
@@ -352,7 +352,7 @@ export default function LiveEntryPage() {
 
             {/* Scoring rule */}
             <div>
-              <p className="text-xs uppercase tracking-wider text-blue-200/40 mb-2">Scoring</p>
+              <p className="text-xs uppercase tracking-wider text-blue-200/60 mb-2">Scoring</p>
               <div className="grid grid-cols-2 gap-2 p-1 bg-board-deep rounded-lg">
                 {(
                   [
@@ -371,7 +371,7 @@ export default function LiveEntryPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-blue-200/50 mt-2">
+              <p className="text-xs text-blue-200/60 mt-2">
                 {scoringMode === "all_correct"
                   ? "Everyone who answers correctly earns the clue's value."
                   : "Only the fastest correct answer earns money — real buzzer rules."}
@@ -380,7 +380,7 @@ export default function LiveEntryPage() {
 
             {/* Pick order */}
             <div>
-              <p className="text-xs uppercase tracking-wider text-blue-200/40 mb-2">Who picks next</p>
+              <p className="text-xs uppercase tracking-wider text-blue-200/60 mb-2">Who picks next</p>
               <div className="grid grid-cols-3 gap-2 p-1 bg-board-deep rounded-lg">
                 {(
                   [
@@ -400,7 +400,7 @@ export default function LiveEntryPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-blue-200/50 mt-2">
+              <p className="text-xs text-blue-200/60 mt-2">
                 {pickMode === "winner"
                   ? "The fastest correct answerer chooses the next clue."
                   : pickMode === "alternating"
@@ -421,7 +421,7 @@ export default function LiveEntryPage() {
               </button>
             )}
 
-            <p className="text-center text-xs text-blue-200/40">
+            <p className="text-center text-xs text-blue-200/60">
               Want to bring a friend in?{" "}
               <Link href="/friends" className="text-gold/70 hover:text-gold underline">
                 Invite them from your friends list

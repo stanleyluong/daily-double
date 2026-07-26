@@ -76,7 +76,7 @@ export default function WatchPage() {
         {error ? (
           <p className="text-center text-red-300 py-16">{error}</p>
         ) : !game ? (
-          <p className="text-center text-blue-200/50 py-16">Loading…</p>
+          <p className="text-center text-blue-200/60 py-16">Loading…</p>
         ) : (
           <div className="space-y-6">
             <p className="text-center text-blue-200/70">
@@ -90,7 +90,7 @@ export default function WatchPage() {
             <ol className="divide-y divide-board bg-board-deep/40 border border-board rounded-lg overflow-hidden">
               {ranked.map((p, i) => (
                 <li key={p.uid} className="flex items-center gap-3 px-4 py-3">
-                  <span className="text-blue-200/50 w-6 text-right">{i + 1}.</span>
+                  <span className="text-blue-200/60 w-6 text-right">{i + 1}.</span>
                   <span className="flex-1 truncate text-blue-100">
                     {p.uid === game.pickerUid && <span className="mr-1">🎯</span>}
                     {p.name}
@@ -123,7 +123,7 @@ export default function WatchPage() {
                           ? "text-green-400"
                           : r.outcome === "wrong"
                             ? "text-red-400"
-                            : "text-blue-200/40"
+                            : "text-blue-200/60"
                       }
                     >
                       {nameFor(puid)} {r.outcome === "correct" ? "✓" : r.outcome === "wrong" ? "✗" : "–"}
@@ -133,7 +133,7 @@ export default function WatchPage() {
               </div>
             )}
 
-            <p className="text-center text-xs text-blue-200/40">
+            <p className="text-center text-xs text-blue-200/60">
               Read-only view — updates every few seconds.
             </p>
           </div>

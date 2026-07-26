@@ -59,7 +59,7 @@ export default function PlayChooserPage() {
           ))}
         </div>
 
-        <p className="text-center text-sm text-blue-200/50 mt-8">
+        <p className="text-center text-sm text-blue-200/60 mt-8">
           Want to play with friends? Any of these work in{" "}
           <Link href="/live" className="text-gold/80 hover:text-gold underline">
             multiplayer

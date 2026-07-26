@@ -1000,7 +1000,7 @@ export default function Game({ date }: { date?: string }) {
           ))}
         </div>
         <p className="text-blue-200/80">{LOADING_MESSAGES[loadingMsg]}</p>
-        <p className="text-xs text-blue-200/40 max-w-xs">
+        <p className="text-xs text-blue-200/60 max-w-xs">
           The first visit of the day generates a brand-new board, which takes a little while.
         </p>
       </div>
@@ -1023,7 +1023,7 @@ export default function Game({ date }: { date?: string }) {
             <button
               onClick={() => setShowShortcuts(true)}
               title="Keyboard shortcuts (press ?)"
-              className="hidden sm:inline-flex items-center gap-1 text-xs text-blue-200/50 hover:text-gold transition-colors"
+              className="hidden sm:inline-flex items-center gap-1 text-xs text-blue-200/60 hover:text-gold transition-colors"
             >
               <span aria-hidden>⌨</span>
               <span className="underline underline-offset-2">Keyboard Shortcuts</span>
@@ -1034,7 +1034,7 @@ export default function Game({ date }: { date?: string }) {
           <span className={displayedScore < 0 ? "text-red-400" : "text-gold"}>
             {formatMoney(displayedScore)}
           </span>
-          <span className="text-blue-200/50 text-lg ml-3">
+          <span className="text-blue-200/60 text-lg ml-3">
             {answeredCount}/{totalClues}
           </span>
         </p>
@@ -1090,7 +1090,7 @@ export default function Game({ date }: { date?: string }) {
                     <span className="font-display tracking-wide text-sm leading-tight uppercase">
                       {cat.title}
                     </span>
-                    <span className="text-xs text-blue-200/50 shrink-0">
+                    <span className="text-xs text-blue-200/60 shrink-0">
                       {answeredInCat}/{cat.clues.length}
                     </span>
                   </div>
@@ -1122,7 +1122,7 @@ export default function Game({ date }: { date?: string }) {
                                     ? "text-green-400"
                                     : result.outcome === "wrong"
                                       ? "text-red-400"
-                                      : "text-blue-200/40"
+                                      : "text-blue-200/60"
                                 }`}
                               >
                                 {result.outcome === "correct" ? "✓" : result.outcome === "wrong" ? "✗" : "–"}
@@ -1198,7 +1198,7 @@ export default function Game({ date }: { date?: string }) {
                                 ? "text-green-400"
                                 : result.outcome === "wrong"
                                   ? "text-red-400"
-                                  : "text-blue-200/40"
+                                  : "text-blue-200/60"
                             }`}
                           >
                             {result.outcome === "correct" ? "✓" : result.outcome === "wrong" ? "✗" : "–"}
@@ -1263,7 +1263,7 @@ export default function Game({ date }: { date?: string }) {
                   onChange={(e) => setPlayerName(e.target.value)}
                   maxLength={24}
                   placeholder="Your name"
-                  className="rounded bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2 text-lg placeholder:text-blue-200/40 w-full sm:w-56"
+                  className="rounded bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2 text-lg placeholder:text-blue-200/60 w-full sm:w-56"
                 />
                 <div className="flex gap-3">
                   <button
@@ -1337,16 +1337,16 @@ export default function Game({ date }: { date?: string }) {
               </Link>
             </p>
             {leaderboard === null ? (
-              <p className="text-center text-blue-200/50">Loading scores…</p>
+              <p className="text-center text-blue-200/60">Loading scores…</p>
             ) : leaderboard.length === 0 ? (
-              <p className="text-center text-blue-200/50">No scores posted yet — be the first.</p>
+              <p className="text-center text-blue-200/60">No scores posted yet — be the first.</p>
             ) : (
               <ol className="divide-y divide-board">
                 {leaderboard.slice(0, 10).map((row, i) => (
                   <li key={`${row.name}-${i}`} className="flex items-center gap-3 py-1.5">
-                    <span className="text-blue-200/50 w-6 text-right">{i + 1}.</span>
+                    <span className="text-blue-200/60 w-6 text-right">{i + 1}.</span>
                     <span className="flex-1 truncate">{row.name}</span>
-                    <span className="text-blue-200/50 text-sm">{formatDuration(row.durationMs)}</span>
+                    <span className="text-blue-200/60 text-sm">{formatDuration(row.durationMs)}</span>
                     <span
                       className={`font-display text-xl tracking-wide w-20 text-right ${
                         row.score < 0 ? "text-red-400" : "text-gold"
@@ -1409,7 +1409,7 @@ export default function Game({ date }: { date?: string }) {
                   value={wagerInput}
                   onChange={(e) => setWagerInput(e.target.value)}
                   placeholder={`e.g. ${Math.min(maxWager, 1000)}`}
-                  className="w-full text-center rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-2xl font-display tracking-wide placeholder:text-blue-200/30 mb-4"
+                  className="w-full text-center rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-2xl font-display tracking-wide placeholder:text-blue-200/60 mb-4"
                 />
                 {maxWager > 0 && (
                   <button
@@ -1455,7 +1455,7 @@ export default function Game({ date }: { date?: string }) {
                       maxLength={200}
                       disabled={phase === "judging"}
                       placeholder="What is…?"
-                      className="w-full rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-lg placeholder:text-blue-200/40"
+                      className="w-full rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-lg placeholder:text-blue-200/60"
                     />
                     <div className="flex gap-3 justify-end">
                       {judgeFailed && (
@@ -1464,7 +1464,7 @@ export default function Game({ date }: { date?: string }) {
                           onClick={closeClue}
                           disabled={phase === "judging"}
                           title="Leave this clue unanswered — you can come back to it later"
-                          className="px-4 py-2 text-blue-200/50 hover:text-blue-100 disabled:opacity-50 transition-colors"
+                          className="px-4 py-2 text-blue-200/60 hover:text-blue-100 disabled:opacity-50 transition-colors"
                         >
                           Back to board
                         </button>
@@ -1557,7 +1557,7 @@ export default function Game({ date }: { date?: string }) {
                           {verdict.playerAnswer}
                         </span>
                       ) : (
-                        <span className="text-blue-200/40">— (not answered)</span>
+                        <span className="text-blue-200/60">— (not answered)</span>
                       )}
                     </p>
                     <p className="text-lg mb-1">
@@ -1574,7 +1574,7 @@ export default function Game({ date }: { date?: string }) {
                           maxLength={300}
                           rows={2}
                           placeholder="Think the judge got it wrong? Explain why (optional)…"
-                          className="w-full rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-3 py-2 text-sm placeholder:text-blue-200/40 resize-none"
+                          className="w-full rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-3 py-2 text-sm placeholder:text-blue-200/60 resize-none"
                         />
                         <button
                           onClick={() => appeal(appealReason)}
@@ -1590,7 +1590,7 @@ export default function Game({ date }: { date?: string }) {
                     <div className="flex items-center justify-between gap-3 mt-6">
                       <div className="min-h-[2.5rem] flex items-center">
                         {verdict.outcome === "wrong" && appealUsed && (
-                          <span className="text-xs text-blue-200/40">No appeals left</span>
+                          <span className="text-xs text-blue-200/60">No appeals left</span>
                         )}
                       </div>
                       <button
@@ -1632,7 +1632,7 @@ export default function Game({ date }: { date?: string }) {
               <button
                 onClick={() => setShowShortcuts(false)}
                 aria-label="Close"
-                className="text-blue-200/50 hover:text-blue-100 text-xl leading-none"
+                className="text-blue-200/60 hover:text-blue-100 text-xl leading-none"
               >
                 ×
               </button>
@@ -1655,7 +1655,7 @@ export default function Game({ date }: { date?: string }) {
                 </li>
               ))}
             </ul>
-            <p className="text-[11px] text-blue-200/40 mt-4 text-center">
+            <p className="text-[11px] text-blue-200/60 mt-4 text-center">
               Arrow navigation is for the desktop board. On phones, tap a clue.
             </p>
           </div>
@@ -1699,7 +1699,7 @@ function Recap({
     return total > 0 ? Math.round((s.correct / total) * 100) : null;
   };
   const outcomeStyle = (o: Outcome) =>
-    o === "correct" ? "text-green-400" : o === "wrong" ? "text-red-400" : "text-blue-200/40";
+    o === "correct" ? "text-green-400" : o === "wrong" ? "text-red-400" : "text-blue-200/60";
   const outcomeMark = (o: Outcome) => (o === "correct" ? "✓" : o === "wrong" ? "✗" : "–");
 
   return (
@@ -1712,7 +1712,7 @@ function Recap({
           <div className="space-y-4">
             {round.categories.map((cat) => (
               <div key={cat.title}>
-                <p className="text-xs uppercase tracking-wider text-blue-200/50 mb-1.5">{cat.title}</p>
+                <p className="text-xs uppercase tracking-wider text-blue-200/60 mb-1.5">{cat.title}</p>
                 <ul className="divide-y divide-board-deep bg-board-deep/30 rounded-lg overflow-hidden">
                   {cat.clues.map((clue) => {
                     const r = results[clue.id];
@@ -1727,7 +1727,7 @@ function Recap({
                             {outcomeMark(r.outcome)} ${clue.value}
                           </span>
                         </div>
-                        <p className="text-xs text-blue-200/50 mt-1">
+                        <p className="text-xs text-blue-200/60 mt-1">
                           Answer: <span className="text-gold">{r.correctAnswer}</span>
                           {r.playerAnswer && (
                             <>
@@ -1758,7 +1758,7 @@ function Recap({
             Final Jeopardy
           </p>
           <div className="bg-board-deep/30 rounded-lg overflow-hidden px-3 py-2.5">
-            <p className="text-xs uppercase tracking-wider text-blue-200/50 mb-1.5">
+            <p className="text-xs uppercase tracking-wider text-blue-200/60 mb-1.5">
               {board.final.category}
             </p>
             <div className="flex items-start justify-between gap-3 text-sm">
@@ -1768,7 +1768,7 @@ function Recap({
                 {results.final.pointValue ? ` $${results.final.pointValue.toLocaleString()}` : ""}
               </span>
             </div>
-            <p className="text-xs text-blue-200/50 mt-1">
+            <p className="text-xs text-blue-200/60 mt-1">
               Answer: <span className="text-gold">{results.final.correctAnswer}</span>
               {results.final.playerAnswer && (
                 <>

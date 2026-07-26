@@ -162,7 +162,7 @@ function CreateBoardPageInner() {
                     <p className={`font-display text-lg tracking-wide ${on ? "text-gold" : "text-blue-100"}`}>
                       {r === 1 ? "Single round" : "Two rounds"}
                     </p>
-                    <p className="text-xs text-blue-200/50 mt-0.5">
+                    <p className="text-xs text-blue-200/60 mt-0.5">
                       {r === 1 ? "6 categories · Jeopardy!" : "12 categories · + Double Jeopardy!"}
                     </p>
                   </button>
@@ -175,7 +175,7 @@ function CreateBoardPageInner() {
               onChange={(e) => setBoardName(e.target.value)}
               maxLength={60}
               placeholder="Board name (optional — e.g. Movie Night Trivia)"
-              className="w-full rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2.5 mb-4 placeholder:text-blue-200/30"
+              className="w-full rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2.5 mb-4 placeholder:text-blue-200/60"
             />
 
             <div className="flex justify-end mb-2">
@@ -208,7 +208,7 @@ function CreateBoardPageInner() {
                         onChange={(e) => setCat(i, e.target.value)}
                         maxLength={60}
                         placeholder={SUGGESTIONS[i]}
-                        className="flex-1 rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2.5 placeholder:text-blue-200/30"
+                        className="flex-1 rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2.5 placeholder:text-blue-200/60"
                       />
                     </div>
                   </div>
@@ -223,12 +223,12 @@ function CreateBoardPageInner() {
             >
               Generate board {filled.length > 0 ? `(${filled.length} categor${filled.length === 1 ? "y" : "ies"})` : ""}
             </button>
-            <p className="text-center text-xs text-blue-200/40 mt-3">
+            <p className="text-center text-xs text-blue-200/60 mt-3">
               Leave some blank to make a shorter board. You need at least one.
             </p>
             {error && <p className="text-center text-red-300 text-sm mt-3">{error}</p>}
             {!user && !loading && (
-              <p className="text-center text-blue-200/50 text-sm mt-3">You&apos;ll be asked to sign in first.</p>
+              <p className="text-center text-blue-200/60 text-sm mt-3">You&apos;ll be asked to sign in first.</p>
             )}
           </>
         )}

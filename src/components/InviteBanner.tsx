@@ -26,7 +26,7 @@ export default function InviteBanner() {
         <p className="text-sm text-blue-100">
           <span className="text-gold font-semibold">{invite.fromName}</span> invited you to a game
         </p>
-        <p className="text-xs text-blue-200/50 font-mono tracking-widest">{invite.gameCode}</p>
+        <p className="text-xs text-blue-200/60 font-mono tracking-widest">{invite.gameCode}</p>
       </div>
       <button
         onClick={() => {
@@ -38,7 +38,7 @@ export default function InviteBanner() {
       >
         Join
       </button>
-      <button onClick={dismiss} aria-label="Dismiss" className="text-blue-200/50 hover:text-blue-100 text-lg leading-none">
+      <button onClick={dismiss} aria-label="Dismiss" className="text-blue-200/60 hover:text-blue-100 text-lg leading-none">
         ×
       </button>
     </div>

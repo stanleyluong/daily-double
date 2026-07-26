@@ -104,7 +104,7 @@ export default function SettingsPage() {
             })}
           </div>
 
-          <p className="text-xs text-blue-200/40 pt-2">
+          <p className="text-xs text-blue-200/60 pt-2">
             Auto-advance applies to keyboard play on the desktop board. See all{" "}
             <Link href="/shortcuts" className="text-gold/70 hover:text-gold underline">
               keyboard shortcuts
@@ -123,9 +123,9 @@ export default function SettingsPage() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label htmlFor="music-vol" className="text-sm text-blue-100">
-                🎵 Music {isMusicMuted() && <span className="text-blue-200/40">(muted)</span>}
+                🎵 Music {isMusicMuted() && <span className="text-blue-200/60">(muted)</span>}
               </label>
-              <span className="text-xs text-blue-200/50 tabular-nums">{Math.round(musicVol * 100)}%</span>
+              <span className="text-xs text-blue-200/60 tabular-nums">{Math.round(musicVol * 100)}%</span>
             </div>
             <input
               id="music-vol"
@@ -146,9 +146,9 @@ export default function SettingsPage() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label htmlFor="sfx-vol" className="text-sm text-blue-100">
-                🔊 Sound effects {isMuted() && <span className="text-blue-200/40">(muted)</span>}
+                🔊 Sound effects {isMuted() && <span className="text-blue-200/60">(muted)</span>}
               </label>
-              <span className="text-xs text-blue-200/50 tabular-nums">{Math.round(sfxVol * 100)}%</span>
+              <span className="text-xs text-blue-200/60 tabular-nums">{Math.round(sfxVol * 100)}%</span>
             </div>
             <input
               id="sfx-vol"

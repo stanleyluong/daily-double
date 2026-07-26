@@ -85,7 +85,7 @@ export default function FriendsPage() {
         </header>
 
         {loading ? (
-          <p className="text-center text-blue-200/50 py-10">Loading…</p>
+          <p className="text-center text-blue-200/60 py-10">Loading…</p>
         ) : !user ? (
           <div className="text-center bg-board-deep/60 border border-board rounded-lg p-8">
             <p className="text-blue-200/80 mb-4">Sign in to add friends.</p>
@@ -105,7 +105,7 @@ export default function FriendsPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Friend's email"
-                className="flex-1 rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2.5 placeholder:text-blue-200/40"
+                className="flex-1 rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2.5 placeholder:text-blue-200/60"
               />
               <button
                 type="submit"
@@ -136,7 +136,7 @@ export default function FriendsPage() {
                       </button>
                       <button
                         onClick={() => act(() => declineFriend(user, r.fromUid))}
-                        className="text-blue-200/50 hover:text-blue-100 text-sm"
+                        className="text-blue-200/60 hover:text-blue-100 text-sm"
                       >
                         Decline
                       </button>
@@ -148,13 +148,13 @@ export default function FriendsPage() {
 
             {/* Friends list */}
             <div>
-              <p className="kicker font-mono text-xs uppercase tracking-widest text-blue-200/50 mb-2">
+              <p className="kicker font-mono text-xs uppercase tracking-widest text-blue-200/60 mb-2">
                 Your friends {data ? `(${data.friends.length})` : ""}
               </p>
               {!data ? (
                 <SkeletonRows rows={3} cols={3} />
               ) : data.friends.length === 0 ? (
-                <p className="text-blue-200/50 text-sm">No friends yet — add someone by their email above.</p>
+                <p className="text-blue-200/60 text-sm">No friends yet — add someone by their email above.</p>
               ) : (
                 <ul className="space-y-2">
                   {data.friends.map((f) => (
@@ -171,7 +171,7 @@ export default function FriendsPage() {
                         {f.game && <span className="ml-1.5 text-[10px] text-green-400 align-middle">● in a lobby</span>}
                       </span>
                       {f.h2h && f.h2h.games > 0 && (
-                        <span className="text-xs text-blue-200/50 shrink-0" title="Head-to-head record">
+                        <span className="text-xs text-blue-200/60 shrink-0" title="Head-to-head record">
                           {f.h2h.myWins}–{f.h2h.theirWins}
                           {f.h2h.ties > 0 ? `–${f.h2h.ties}` : ""}
                         </span>
@@ -210,7 +210,7 @@ export default function FriendsPage() {
                   ))}
                 </ul>
               )}
-              <p className="text-xs text-blue-200/40 mt-3">
+              <p className="text-xs text-blue-200/60 mt-3">
                 Friends with an open lobby show a Join button. Otherwise, Invite starts a new game and sends them
                 straight to it.
               </p>

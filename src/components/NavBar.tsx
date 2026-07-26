@@ -177,7 +177,7 @@ export default function NavBar() {
                 title={musicMuted ? "Music off — click to turn on" : "Music on — click to turn off"}
                 aria-label={musicMuted ? "Turn music on" : "Turn music off"}
                 className={`grid place-items-center h-9 w-9 transition-colors ${
-                  musicMuted ? "text-blue-200/25 hover:text-blue-200/50" : "text-blue-200/75 hover:text-gold"
+                  musicMuted ? "text-blue-200/25 hover:text-blue-200/60" : "text-blue-200/75 hover:text-gold"
                 } hover:bg-shell-raised`}
               >
                 <MusicIcon className="h-4.5 w-4.5" />
@@ -188,8 +188,8 @@ export default function NavBar() {
                 className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-32 rounded-sm border border-[color:var(--hairline-strong)] bg-shell-panel p-2.5 shadow-lg z-50 invisible opacity-0 group-hover/music:visible group-hover/music:opacity-100 group-focus-within/music:visible group-focus-within/music:opacity-100 transition-opacity"
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] uppercase tracking-wider text-blue-200/50">Music</span>
-                  <span className="text-[10px] text-blue-200/50 tabular-nums">{Math.round(musicVol * 100)}%</span>
+                  <span className="text-[10px] uppercase tracking-wider text-blue-200/60">Music</span>
+                  <span className="text-[10px] text-blue-200/60 tabular-nums">{Math.round(musicVol * 100)}%</span>
                 </div>
                 <input
                   type="range"
@@ -243,7 +243,7 @@ export default function NavBar() {
               >
                 {user.displayName || user.email}
               </Link>
-              <button onClick={() => signOut(auth)} className="text-blue-200/50 hover:text-blue-100">
+              <button onClick={() => signOut(auth)} className="text-blue-200/60 hover:text-blue-100">
                 Sign out
               </button>
             </>

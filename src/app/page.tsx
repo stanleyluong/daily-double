@@ -7,7 +7,7 @@ export default function Home() {
       <main className="flex-1 w-full px-4 md:px-8 py-10">
         <Game />
       </main>
-      <footer className="text-center text-xs text-blue-200/40 py-6 space-y-1">
+      <footer className="text-center text-xs text-blue-200/60 py-6 space-y-1">
         <p className="flex items-center justify-center gap-x-3 gap-y-1 flex-wrap">
           <Link href="/changelog" className="hover:text-gold underline underline-offset-2">
             What&apos;s new

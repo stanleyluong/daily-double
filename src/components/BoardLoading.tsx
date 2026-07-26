@@ -48,7 +48,7 @@ export default function BoardLoading({
     <div className="max-w-lg mx-auto text-center py-14 px-4">
       <div className="inline-block h-10 w-10 border-2 border-gold border-t-transparent rounded-full animate-spin mb-5" />
       <p className="text-blue-100 font-display text-2xl tracking-wide">{title}</p>
-      {detail && <p className="text-blue-200/50 text-sm mt-2">{detail}</p>}
+      {detail && <p className="text-blue-200/60 text-sm mt-2">{detail}</p>}
 
       <div className="mt-9 rounded-lg border border-[color:var(--hairline)] bg-board-deep/50 px-6 py-6">
         <p className="font-display tracking-[0.22em] text-gold/70 text-xs mb-3">DID YOU KNOW?</p>

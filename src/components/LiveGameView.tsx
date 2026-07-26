@@ -311,7 +311,7 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
                 onClick={() => {
                   if (user) liveLeave(user, game.id).catch(() => {});
                 }}
-                className="text-xs text-blue-200/50 hover:text-gold"
+                className="text-xs text-blue-200/60 hover:text-gold"
               >
                 ← Leave
               </Link>
@@ -321,7 +321,7 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
                   setMuted(next);
                   setMutedState(next);
                 }}
-                className="text-xs text-blue-200/50 hover:text-gold"
+                className="text-xs text-blue-200/60 hover:text-gold"
                 title={muted ? "Unmute" : "Mute"}
               >
                 {muted ? "🔇 Sound off" : "🔊 Sound on"}
@@ -330,7 +330,7 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
                   header, but joining now happens via the friends sidebar, so
                   it's just a quiet identifier (still useful for the
                   spectator link and telling tabs apart), not a headline. */}
-              <span className="text-xs text-blue-200/40 font-mono tracking-wider">{game.id}</span>
+              <span className="text-xs text-blue-200/60 font-mono tracking-wider">{game.id}</span>
               <span
                 className={`text-[10px] font-mono tracking-wider px-2 py-0.5 rounded-full align-middle ${
                   game.mode === "ranked"
@@ -366,11 +366,11 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
               {game.players.map((p) => (
                 <p key={p.uid} className="text-blue-100">
                   {p.name}
-                  {p.uid === game.hostUid && <span className="text-blue-200/40 text-xs ml-2">host</span>}
+                  {p.uid === game.hostUid && <span className="text-blue-200/60 text-xs ml-2">host</span>}
                 </p>
               ))}
               {game.players.length < 3 && (
-                <p className="text-blue-200/40 text-sm">Waiting for players… ({game.players.length}/3)</p>
+                <p className="text-blue-200/60 text-sm">Waiting for players… ({game.players.length}/3)</p>
               )}
             </div>
 
@@ -381,14 +381,14 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
                 them there. */}
             {isHost && game.mode !== "ranked" && (
               <div className="flex items-center justify-center gap-3 mb-6 text-sm">
-                <span className="text-blue-200/50">Board:</span>
+                <span className="text-blue-200/60">Board:</span>
                 <Link
                   href={`/archive?forGame=${game.id}`}
                   className="text-gold/80 hover:text-gold underline underline-offset-2"
                 >
                   Browse Archive
                 </Link>
-                <span className="text-blue-200/30">·</span>
+                <span className="text-blue-200/60">·</span>
                 <Link
                   href={`/create?forGame=${game.id}`}
                   className="text-gold/80 hover:text-gold underline underline-offset-2"
@@ -443,7 +443,7 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
 
             <Link
               href={`/live/${game.id}/watch`}
-              className="inline-block mt-4 text-xs text-blue-200/40 hover:text-gold underline"
+              className="inline-block mt-4 text-xs text-blue-200/60 hover:text-gold underline"
             >
               👁 Spectator link — share so anyone can watch (no sign-in needed)
             </Link>
@@ -649,19 +649,19 @@ function GameChat({
     <div className="fixed bottom-4 right-4 lg:right-[19rem] z-40 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-[color:var(--hairline)] bg-shell shadow-2xl flex flex-col">
       <div className="flex items-center justify-between px-3 h-10 border-b border-[color:var(--hairline)]">
         <span className="font-display tracking-[0.2em] text-gold text-sm">GAME CHAT</span>
-        <button onClick={() => setOpen(false)} className="text-blue-200/50 hover:text-blue-100 text-lg leading-none">
+        <button onClick={() => setOpen(false)} className="text-blue-200/60 hover:text-blue-100 text-lg leading-none">
           ✕
         </button>
       </div>
       <div ref={logRef} className="h-64 overflow-y-auto px-3 py-2 flex flex-col gap-1.5">
         {chat.length === 0 && (
-          <p className="text-xs text-blue-200/40 m-auto">No messages yet — say hi 👋</p>
+          <p className="text-xs text-blue-200/60 m-auto">No messages yet — say hi 👋</p>
         )}
         {chat.map((m) => {
           const mine = m.uid === uid;
           return (
             <div key={m.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
-              {!mine && <span className="text-[10px] text-blue-200/40 px-1">{m.name}</span>}
+              {!mine && <span className="text-[10px] text-blue-200/60 px-1">{m.name}</span>}
               <span
                 className={`inline-block max-w-[85%] rounded-lg px-2.5 py-1.5 text-sm break-words ${
                   mine ? "bg-gold/90 text-board-deep" : "bg-shell-panel text-blue-100"
@@ -679,7 +679,7 @@ function GameChat({
           onChange={(e) => setText(e.target.value)}
           maxLength={300}
           placeholder="Message…"
-          className="flex-1 min-w-0 rounded-sm bg-shell-panel border border-[color:var(--hairline)] focus:border-gold outline-none px-2.5 py-1.5 text-sm placeholder:text-blue-200/35"
+          className="flex-1 min-w-0 rounded-sm bg-shell-panel border border-[color:var(--hairline)] focus:border-gold outline-none px-2.5 py-1.5 text-sm placeholder:text-blue-200/60"
         />
         <button
           type="submit"
@@ -756,7 +756,7 @@ function LobbySettingsEditor({
   return (
     <div className="mb-6 text-left space-y-3">
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-blue-200/40 mb-1 text-center">
+        <p className="text-[10px] uppercase tracking-wider text-blue-200/60 mb-1 text-center">
           Answer timer · {game.answerMs / 1000}s
         </p>
         <div className="grid grid-cols-5 gap-1">
@@ -775,7 +775,7 @@ function LobbySettingsEditor({
       </div>
 
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-blue-200/40 mb-1 text-center">Scoring</p>
+        <p className="text-[10px] uppercase tracking-wider text-blue-200/60 mb-1 text-center">Scoring</p>
         <div className="grid grid-cols-2 gap-1">
           {(
             [
@@ -797,7 +797,7 @@ function LobbySettingsEditor({
       </div>
 
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-blue-200/40 mb-1 text-center">Who picks next</p>
+        <p className="text-[10px] uppercase tracking-wider text-blue-200/60 mb-1 text-center">Who picks next</p>
         <div className="grid grid-cols-3 gap-1">
           {(
             [
@@ -832,7 +832,7 @@ function InviteFriends({ gameCode, playerUids }: { gameCode: string; playerUids:
 
   return (
     <div className="mt-6 pt-5 border-t border-board text-left">
-      <p className="text-xs uppercase tracking-wider text-blue-200/40 mb-2">Invite friends</p>
+      <p className="text-xs uppercase tracking-wider text-blue-200/60 mb-2">Invite friends</p>
       <ul className="space-y-1.5">
         {candidates.map((f) => (
           <li key={f.uid} className="flex items-center gap-2.5">
@@ -882,7 +882,7 @@ function Scoreboard({
           <div key={p.uid} className="flex items-center justify-between gap-3 text-sm py-0.5">
             <span className={`truncate ${p.uid === uid ? "text-gold" : "text-blue-100"}`}>
               {nameFor(p.uid)}
-              {p.uid === game.pickerUid && <span className="text-blue-200/40 text-xs ml-1">•pick</span>}
+              {p.uid === game.pickerUid && <span className="text-blue-200/60 text-xs ml-1">•pick</span>}
             </span>
             <span className={`font-display tracking-wide ${score < 0 ? "text-red-400" : "text-gold"}`}>
               {formatMoney(score)}
@@ -905,7 +905,7 @@ function LiveBoard({
   canPick: boolean;
   onPick: (clueId: string) => void;
 }) {
-  if (!round) return <p className="text-center text-blue-200/50 py-10">Loading board…</p>;
+  if (!round) return <p className="text-center text-blue-200/60 py-10">Loading board…</p>;
   return (
     <div className="overflow-x-auto pb-2">
       <div className="grid grid-cols-6 gap-1.5 min-w-[680px]">
@@ -1049,7 +1049,7 @@ function ActiveClue({
             onChange={(e) => setInput(e.target.value)}
             maxLength={200}
             placeholder="What is…?"
-            className="flex-1 rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-lg placeholder:text-blue-200/40"
+            className="flex-1 rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-lg placeholder:text-blue-200/60"
           />
           <button
             type="button"
@@ -1085,7 +1085,7 @@ function ActiveClue({
             className={`text-xs px-2 py-1 rounded-full border ${
               game.currentSubmittedUids.includes(p.uid)
                 ? "border-green-400/40 text-green-300"
-                : "border-blue-300/20 text-blue-200/40"
+                : "border-blue-300/20 text-blue-200/60"
             }`}
           >
             {nameFor(p.uid)} {game.currentSubmittedUids.includes(p.uid) ? "✓" : "…"}
@@ -1128,9 +1128,9 @@ function Reveal({
             <div key={p.uid} className="flex items-center justify-between gap-3 border-b border-board-deep pb-1.5">
               <span className={p.uid === uid ? "text-gold" : "text-blue-100"}>{nameFor(p.uid)}</span>
               <span className="flex items-center gap-2">
-                <span className="text-blue-200/50 text-sm truncate max-w-[10rem]">{res?.answer ?? "—"}</span>
+                <span className="text-blue-200/60 text-sm truncate max-w-[10rem]">{res?.answer ?? "—"}</span>
                 {res?.ms !== undefined && (
-                  <span className="text-blue-200/30 text-xs tabular-nums shrink-0">
+                  <span className="text-blue-200/60 text-xs tabular-nums shrink-0">
                     {(res.ms / 1000).toFixed(1)}s
                   </span>
                 )}
@@ -1140,7 +1140,7 @@ function Reveal({
                       ? "text-green-400"
                       : outcome === "wrong"
                         ? "text-red-400"
-                        : "text-blue-200/30"
+                        : "text-blue-200/60"
                   }
                 >
                   {res?.wager !== undefined
@@ -1204,7 +1204,7 @@ function FinalWager({
       <p className="text-blue-200/70 mb-1">
         Category: <span className="text-foreground">{board?.final?.category ?? "…"}</span>
       </p>
-      {secsLeft !== null && <p className="text-xs text-blue-200/40 mb-5">Wager within {secsLeft}s</p>}
+      {secsLeft !== null && <p className="text-xs text-blue-200/60 mb-5">Wager within {secsLeft}s</p>}
 
       {!iWagered ? (
         <form
@@ -1226,7 +1226,7 @@ function FinalWager({
             value={wagerInput}
             onChange={(e) => setWagerInput(e.target.value)}
             placeholder="0"
-            className="w-full text-center rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-2xl font-display tracking-wide placeholder:text-blue-200/30 mb-4"
+            className="w-full text-center rounded bg-board-deep border border-blue-300/30 focus:border-gold outline-none px-4 py-3 text-2xl font-display tracking-wide placeholder:text-blue-200/60 mb-4"
           />
           {maxWager > 0 && (
             <button
@@ -1254,7 +1254,7 @@ function FinalWager({
           <span
             key={p.uid}
             className={`text-xs px-2 py-1 rounded-full border ${
-              p.uid in game.finalWagers ? "border-green-400/40 text-green-300" : "border-blue-300/20 text-blue-200/40"
+              p.uid in game.finalWagers ? "border-green-400/40 text-green-300" : "border-blue-300/20 text-blue-200/60"
             }`}
           >
             {nameFor(p.uid)} {p.uid in game.finalWagers ? "✓" : "…"}
@@ -1298,7 +1298,7 @@ function Finished({
       <div className="space-y-2 my-6">
         {ranked.map((p, i) => (
           <div key={p.uid} className="flex items-center justify-between gap-3 max-w-xs mx-auto">
-            <span className="text-blue-200/50 w-6 text-right">{i + 1}.</span>
+            <span className="text-blue-200/60 w-6 text-right">{i + 1}.</span>
             <span className={`flex-1 text-left ${p.uid === uid ? "text-gold" : "text-blue-100"}`}>
               {nameFor(p.uid)}
             </span>

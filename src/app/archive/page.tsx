@@ -40,7 +40,7 @@ const STATUS_LABEL: Record<BoardStatus, string> = {
 const STATUS_CLASS: Record<BoardStatus, string> = {
   completed: "text-gold bg-gold/10 border-gold/40",
   in_progress: "text-blue-100 bg-blue-300/10 border-blue-300/30",
-  new: "text-blue-200/40 bg-transparent border-blue-300/15",
+  new: "text-blue-200/60 bg-transparent border-blue-300/15",
 };
 
 function formatDate(date: string): string {
@@ -234,7 +234,7 @@ function ArchivePageInner() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search categories (e.g. cats, rivers, opera)…"
-            className="flex-1 rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2.5 placeholder:text-blue-200/40"
+            className="flex-1 rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-4 py-2.5 placeholder:text-blue-200/60"
           />
           <button
             type="submit"
@@ -257,7 +257,7 @@ function ArchivePageInner() {
           )}
         </form>
 
-        <p className="text-center text-sm text-blue-200/50 mb-4">
+        <p className="text-center text-sm text-blue-200/60 mb-4">
           {loading
             ? "Searching…"
             : rows === null
@@ -304,7 +304,7 @@ function ArchivePageInner() {
                         </span>
                         <span
                           className={`block text-xs mt-0.5 ${
-                            b.kind === "daily" ? "text-gold/70" : b.kind === "custom" ? "text-blue-200/50" : "text-blue-200/40"
+                            b.kind === "daily" ? "text-gold/70" : b.kind === "custom" ? "text-blue-200/60" : "text-blue-200/60"
                           }`}
                         >
                           {b.kind === "historical"
@@ -317,7 +317,7 @@ function ArchivePageInner() {
                       <td className="px-4 py-3 text-blue-200/80 leading-relaxed">
                         {b.categoryTitles.map((c, i) => (
                           <span key={i}>
-                            {i > 0 && <span className="text-blue-200/30"> · </span>}
+                            {i > 0 && <span className="text-blue-200/60"> · </span>}
                             {highlight(c)}
                           </span>
                         ))}
@@ -330,7 +330,7 @@ function ArchivePageInner() {
                             {STATUS_LABEL[status]}
                           </span>
                         ) : (
-                          <span className="text-xs text-blue-200/30">Sign in to track</span>
+                          <span className="text-xs text-blue-200/60">Sign in to track</span>
                         )}
                       </td>
                       <td className="px-4 py-3 align-top">
@@ -352,12 +352,12 @@ function ArchivePageInner() {
         )}
 
         {rows !== null && sorted && sorted.length === 0 && !loading && (
-          <p className="text-center text-blue-200/50 py-16">
+          <p className="text-center text-blue-200/60 py-16">
             {active ? `No boards found with a category matching “${active}”.` : "No boards found."}
           </p>
         )}
       </main>
-      <footer className="text-center text-xs text-blue-200/40 py-6">
+      <footer className="text-center text-xs text-blue-200/60 py-6">
         Built by Stanley Luong · Historical clues via the J! Archive · Not affiliated with Jeopardy!
       </footer>
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} message="Sign in to play." />}

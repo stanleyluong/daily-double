@@ -62,7 +62,7 @@ export default function ShortcutsPage() {
               keys={
                 <>
                   <Kbd>Enter</Kbd>
-                  <span className="text-blue-200/40 text-sm">or</span>
+                  <span className="text-blue-200/60 text-sm">or</span>
                   <Kbd>Space</Kbd>
                 </>
               }
@@ -88,7 +88,7 @@ export default function ShortcutsPage() {
               keys={
                 <>
                   <Kbd>Enter</Kbd>
-                  <span className="text-blue-200/40 text-sm">or</span>
+                  <span className="text-blue-200/60 text-sm">or</span>
                   <Kbd>Esc</Kbd>
                 </>
               }
@@ -96,7 +96,7 @@ export default function ShortcutsPage() {
             />
           </Section>
 
-          <p className="text-xs text-blue-200/40 text-center pt-2">
+          <p className="text-xs text-blue-200/60 text-center pt-2">
             Arrow-key navigation is for the desktop board grid. On phones, tap a clue to open or review it.
           </p>
         </div>

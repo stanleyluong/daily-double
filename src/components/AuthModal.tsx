@@ -105,7 +105,7 @@ export default function AuthModal({ onClose, message }: AuthModalProps) {
           Continue with Google
         </button>
 
-        <div className="text-center text-xs text-blue-200/50 mb-4">or</div>
+        <div className="text-center text-xs text-blue-200/60 mb-4">or</div>
 
         <form onSubmit={submitEmail} className="flex flex-col gap-3">
           <input
@@ -145,7 +145,7 @@ export default function AuthModal({ onClose, message }: AuthModalProps) {
         <button
           type="button"
           onClick={onClose}
-          className="mt-4 text-xs text-blue-200/40 hover:text-blue-100 block mx-auto"
+          className="mt-4 text-xs text-blue-200/60 hover:text-blue-100 block mx-auto"
         >
           Close
         </button>

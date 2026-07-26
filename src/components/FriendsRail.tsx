@@ -88,7 +88,7 @@ export default function FriendsRail() {
       <div className="flex items-center justify-between px-4 h-11 border-b border-[color:var(--hairline)]">
         <span className="font-display tracking-[0.25em] text-gold text-sm">SOCIAL</span>
         {user && (
-          <span className="text-[11px] text-blue-200/50 tabular-nums">
+          <span className="text-[11px] text-blue-200/60 tabular-nums">
             <span className="text-online">●</span> {online.length}/{friends.length}
           </span>
         )}
@@ -121,7 +121,7 @@ export default function FriendsRail() {
                     </button>
                     <button
                       onClick={() => act(`decl-inv:${inv.fromUid}`, () => clearInvite(user, inv.fromUid))}
-                      className="px-3 text-blue-200/50 hover:text-blue-100 text-sm"
+                      className="px-3 text-blue-200/60 hover:text-blue-100 text-sm"
                     >
                       Dismiss
                     </button>
@@ -150,7 +150,7 @@ export default function FriendsRail() {
                     </button>
                     <button
                       onClick={() => act(`dec:${req.fromUid}`, () => declineFriend(user, req.fromUid))}
-                      className="px-3 text-blue-200/50 hover:text-blue-100 text-sm"
+                      className="px-3 text-blue-200/60 hover:text-blue-100 text-sm"
                     >
                       Decline
                     </button>
@@ -163,7 +163,7 @@ export default function FriendsRail() {
           {/* Online friends */}
           <Section label={`Online — ${online.length}`}>
             {online.length === 0 && (
-              <p className="text-xs text-blue-200/40 px-1 py-1">Nobody online right now.</p>
+              <p className="text-xs text-blue-200/60 px-1 py-1">Nobody online right now.</p>
             )}
             {online.map((f) => (
               <FriendRow
@@ -196,7 +196,7 @@ export default function FriendsRail() {
           )}
 
           {friends.length === 0 && (data?.requests.length ?? 0) === 0 && (
-            <p className="text-xs text-blue-200/45 px-1">
+            <p className="text-xs text-blue-200/60 px-1">
               No friends yet — add someone by email below.
             </p>
           )}
@@ -212,7 +212,7 @@ export default function FriendsRail() {
               value={addEmail}
               onChange={(e) => setAddEmail(e.target.value)}
               placeholder="Add by email"
-              className="flex-1 min-w-0 rounded-sm bg-shell-panel border border-[color:var(--hairline)] focus:border-gold outline-none px-2.5 py-1.5 text-sm placeholder:text-blue-200/35"
+              className="flex-1 min-w-0 rounded-sm bg-shell-panel border border-[color:var(--hairline)] focus:border-gold outline-none px-2.5 py-1.5 text-sm placeholder:text-blue-200/60"
             />
             <button
               type="submit"
@@ -222,7 +222,7 @@ export default function FriendsRail() {
             </button>
           </form>
           {note && <p className="text-[11px] text-blue-200/55 mt-1.5">{note}</p>}
-          <Link href="/friends" className="block text-[11px] text-blue-200/45 hover:text-gold mt-2">
+          <Link href="/friends" className="block text-[11px] text-blue-200/60 hover:text-gold mt-2">
             Manage friends →
           </Link>
         </div>
@@ -234,7 +234,7 @@ export default function FriendsRail() {
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <p className="text-[10px] uppercase tracking-[0.18em] text-blue-200/40 px-1">{label}</p>
+      <p className="text-[10px] uppercase tracking-[0.18em] text-blue-200/60 px-1">{label}</p>
       {children}
     </div>
   );
@@ -268,7 +268,7 @@ function FriendRow({
       <button
         onClick={onMessage}
         className={`flex-1 min-w-0 text-left truncate text-sm hover:text-gold ${
-          online ? "text-blue-100" : "text-blue-200/45"
+          online ? "text-blue-100" : "text-blue-200/60"
         }`}
         title={`Message ${name}`}
       >
@@ -284,7 +284,7 @@ function FriendRow({
         <button
           onClick={onMessage}
           title={`Message ${name}`}
-          className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-blue-200/50 hover:text-gold transition-opacity shrink-0"
+          className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-blue-200/60 hover:text-gold transition-opacity shrink-0"
           aria-label={`Message ${name}`}
         >
           💬

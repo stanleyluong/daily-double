@@ -26,7 +26,7 @@ export default function AccountBar() {
           </Link>
           <button
             onClick={() => signOut(auth)}
-            className="text-blue-200/50 hover:text-blue-100"
+            className="text-blue-200/60 hover:text-blue-100"
           >
             Sign out
           </button>

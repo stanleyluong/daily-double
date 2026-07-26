@@ -24,7 +24,7 @@ export default function PrivacyPage() {
       <main className="flex-1 w-full max-w-3xl mx-auto px-6 py-12">
         <header className="mb-10">
           <h1 className="font-display text-4xl md:text-5xl tracking-wider text-gold">Privacy Policy</h1>
-          <p className="text-blue-200/50 mt-2 text-sm">Last updated: {UPDATED}</p>
+          <p className="text-blue-200/60 mt-2 text-sm">Last updated: {UPDATED}</p>
           <Link href="/" className="inline-block mt-4 text-gold/80 hover:text-gold underline">
             ← Back to Daily Double
           </Link>
@@ -134,7 +134,7 @@ export default function PrivacyPage() {
             </p>
           </Section>
 
-          <p className="text-blue-200/40 text-sm pt-4">
+          <p className="text-blue-200/60 text-sm pt-4">
             See also our{" "}
             <Link href="/terms" className="text-gold/70 hover:text-gold underline">
               Terms of Service

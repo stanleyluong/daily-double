@@ -120,14 +120,14 @@ function DmWindow({
     <div className="fixed bottom-4 right-4 z-50 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-[color:var(--hairline)] bg-shell shadow-2xl flex flex-col">
       <div className="flex items-center justify-between px-3 h-11 border-b border-[color:var(--hairline)]">
         <span className="font-display tracking-wide text-gold truncate">{withName}</span>
-        <button onClick={onClose} className="text-blue-200/50 hover:text-blue-100 text-lg leading-none">
+        <button onClick={onClose} className="text-blue-200/60 hover:text-blue-100 text-lg leading-none">
           ✕
         </button>
       </div>
       <div ref={logRef} className="h-72 overflow-y-auto px-3 py-2 flex flex-col gap-1.5">
-        {messages === null && <p className="text-xs text-blue-200/40 m-auto">Loading…</p>}
+        {messages === null && <p className="text-xs text-blue-200/60 m-auto">Loading…</p>}
         {messages?.length === 0 && (
-          <p className="text-xs text-blue-200/40 m-auto text-center">
+          <p className="text-xs text-blue-200/60 m-auto text-center">
             No messages yet. Say hello to {withName} 👋
           </p>
         )}
@@ -152,7 +152,7 @@ function DmWindow({
           onChange={(e) => setText(e.target.value)}
           maxLength={1000}
           placeholder={`Message ${withName}…`}
-          className="flex-1 min-w-0 rounded-sm bg-shell-panel border border-[color:var(--hairline)] focus:border-gold outline-none px-2.5 py-1.5 text-sm placeholder:text-blue-200/35"
+          className="flex-1 min-w-0 rounded-sm bg-shell-panel border border-[color:var(--hairline)] focus:border-gold outline-none px-2.5 py-1.5 text-sm placeholder:text-blue-200/60"
         />
         <button
           type="submit"
