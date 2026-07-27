@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { useDm } from "@/components/DmProvider";
 import { useFriends } from "@/components/FriendsProvider";
+import SkeletonRows from "@/components/SkeletonRows";
 import {
   acceptFriend,
   addFriend,
@@ -20,7 +21,7 @@ import { liveCreate, liveJoin } from "@/lib/liveActions";
 // with presence, plus one-click "invite to a new game".
 export default function FriendsRail() {
   const { user } = useAuth();
-  const { data, refresh } = useFriends();
+  const { data, loading, refresh } = useFriends();
   const { unread, open: openDm } = useDm();
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -87,7 +88,7 @@ export default function FriendsRail() {
     <aside className="hidden lg:flex flex-col w-72 shrink-0 border-l border-[color:var(--hairline)] bg-shell sticky top-14 h-[calc(100vh-3.5rem)]">
       <div className="flex items-center justify-between px-4 h-11 border-b border-[color:var(--hairline)]">
         <span className="font-display tracking-[0.25em] text-gold text-sm">SOCIAL</span>
-        {user && (
+        {user && !loading && (
           <span className="text-[11px] text-blue-200/60 tabular-nums">
             <span className="text-online">●</span> {online.length}/{friends.length}
           </span>
@@ -97,6 +98,10 @@ export default function FriendsRail() {
       {!user ? (
         <div className="flex-1 grid place-items-center px-6 text-center">
           <p className="text-sm text-blue-200/60">Sign in to see your friends and invites here.</p>
+        </div>
+      ) : loading ? (
+        <div className="flex-1 overflow-y-auto px-3 py-3">
+          <SkeletonRows rows={3} cols={2} />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-4">

@@ -825,10 +825,14 @@ function LobbySettingsEditor({
 // Invite online friends who aren't already in the game, straight from the lobby.
 function InviteFriends({ gameCode, playerUids }: { gameCode: string; playerUids: string[] }) {
   const { user } = useAuth();
-  const { data } = useFriends();
+  const { data, loading } = useFriends();
   const [invited, setInvited] = useState<Set<string>>(new Set());
+  // Wait for a real answer before deciding to hide this section — otherwise
+  // a friends fetch that's still in flight looks identical to "no friends to
+  // invite" and the section never appears even though candidates exist.
+  if (!user || loading) return null;
   const candidates = (data?.friends ?? []).filter((f) => !playerUids.includes(f.uid));
-  if (!user || candidates.length === 0) return null;
+  if (candidates.length === 0) return null;
 
   return (
     <div className="mt-6 pt-5 border-t border-board text-left">
