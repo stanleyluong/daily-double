@@ -194,8 +194,18 @@ export default function NavBar() {
               </button>
               {/* Hover (or keyboard-focus) reveal — volume for the main theme,
                   separate from the on/off toggle above it. */}
+              {/* right-0 instead of left-1/2 -translate-x-1/2: this button sits
+                  near the right edge of the nav bar, and centering via
+                  translate doesn't count toward the page's scrollable
+                  overflow (transforms are excluded from that calculation) —
+                  so the popover's pre-transform layout box could extend well
+                  past the viewport's right edge, inflating document
+                  scrollWidth with zero visible symptom (it's still painted
+                  in the right place). Right-anchoring avoids the transform
+                  entirely, so the layout box and the painted box are the
+                  same box. */}
               <div
-                className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-32 rounded-sm border border-[color:var(--hairline-strong)] bg-shell-panel p-2.5 shadow-lg z-50 invisible opacity-0 group-hover/music:visible group-hover/music:opacity-100 group-focus-within/music:visible group-focus-within/music:opacity-100 transition-opacity"
+                className="absolute right-0 top-full mt-2 w-32 rounded-sm border border-[color:var(--hairline-strong)] bg-shell-panel p-2.5 shadow-lg z-50 invisible opacity-0 group-hover/music:visible group-hover/music:opacity-100 group-focus-within/music:visible group-focus-within/music:opacity-100 transition-opacity"
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] uppercase tracking-wider text-blue-200/60">Music</span>
