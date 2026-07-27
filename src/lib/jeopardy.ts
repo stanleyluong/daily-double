@@ -12,6 +12,14 @@ export interface Clue {
   answer: string;
   acceptable: string[];
   dailyDouble: boolean;
+  // True only for a historical (J-Archive) clue that was never asked on the
+  // original broadcast — the round ran out of time before it was played, not
+  // a data-import failure. clue/answer/acceptable are empty placeholders;
+  // every consumer that walks a category's clues to decide what's answerable
+  // (currentRoundClueIds/roundClueIds, totalClueCount, findClue) excludes
+  // these. Never set by board generation — only by the J-Archive importer and
+  // its one-time migration.
+  unrevealed?: boolean;
 }
 
 export interface Category {
@@ -57,6 +65,7 @@ export interface PublicClue {
   value: number;
   clue: string;
   dailyDouble: boolean;
+  unrevealed?: boolean;
 }
 
 export interface PublicFinalClue {
@@ -838,29 +847,44 @@ export function toPublicBoard(board: Board): PublicBoard {
       name: round.name,
       categories: round.categories.map((cat) => ({
         title: cat.title,
-        clues: cat.clues.map(({ id, value, clue, dailyDouble }) => ({ id, value, clue, dailyDouble })),
+        clues: cat.clues.map(({ id, value, clue, dailyDouble, unrevealed }) => ({
+          id,
+          value,
+          clue,
+          dailyDouble,
+          unrevealed,
+        })),
       })),
     })),
     final: board.final ? { category: board.final.category, clue: board.final.clue } : undefined,
   };
 }
 
+// Never returns an unrevealed placeholder — callers (the judge routes, live
+// resolve) treat "not found" and "never aired" identically: there's nothing
+// to judge either way. This also makes findClue a safety net against a
+// judge request naming an unrevealed clue's id directly, independent of
+// currentRoundClueIds already excluding it from what's pickable.
 export function findClue(
   board: Board,
   clueId: string
 ): { clue: Clue; category: Category; roundIndex: number } | null {
   for (let roundIndex = 0; roundIndex < board.rounds.length; roundIndex++) {
     for (const category of board.rounds[roundIndex].categories) {
-      const clue = category.clues.find((c) => c.id === clueId);
+      const clue = category.clues.find((c) => c.id === clueId && !c.unrevealed);
       if (clue) return { clue, category, roundIndex };
     }
   }
   return null;
 }
 
+// Excludes unrevealed placeholders — they can never be answered, so counting
+// them would make a historical board with a gap permanently "unfinished"
+// (this gates score submission in /api/scores).
 export function totalClueCount(board: Board): number {
   const gridClues = board.rounds.reduce(
-    (n, round) => n + round.categories.reduce((m, cat) => m + cat.clues.length, 0),
+    (n, round) =>
+      n + round.categories.reduce((m, cat) => m + cat.clues.filter((c) => !c.unrevealed).length, 0),
     0
   );
   return gridClues + (board.final ? 1 : 0);

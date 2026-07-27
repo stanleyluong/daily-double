@@ -92,12 +92,22 @@ function parseGame(html, gameId) {
       for (let row = 1; row <= 5; row++) {
         const id = `clue_${key}_${col}_${row}`;
         const rawText = tdInner(html, id);
-        if (rawText === null) continue; // unrevealed / missing cell
-        const answer = correctResponse(html, id);
-        if (answer === null) continue;
+        const answer = rawText === null ? null : correctResponse(html, id);
+        const slotId = `${roundIndex}-${col - 1}-${row - 1}`;
+        const value = row * 200 * multiplier; // normalized to the app's scale
+        if (rawText === null || answer === null) {
+          // Genuinely unrevealed on the original broadcast (round ran out of
+          // time) — per J-Archive's FAQ, a blank clue means it wasn't played,
+          // not that our scrape failed. Keep the slot (with a real id/value)
+          // instead of dropping it, so the array stays a dense 5 entries
+          // indexed by row — dropping it would silently shift every later
+          // clue in this category up one row on the client's fixed 5-row grid.
+          clues.push({ id: slotId, value, unrevealed: true, clue: "", answer: "", acceptable: [], dailyDouble: false });
+          continue;
+        }
         clues.push({
-          id: `${roundIndex}-${col - 1}-${row - 1}`,
-          value: row * 200 * multiplier, // normalized to the app's scale
+          id: slotId,
+          value,
           clue: stripTags(rawText),
           answer,
           acceptable: [],

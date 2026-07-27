@@ -481,10 +481,14 @@ export async function startGame(gameId: string, uid: string): Promise<void> {
   }
 }
 
+// Excludes unrevealed clues (never aired on the original broadcast, for a
+// historical board) — this list doubles as both "what must be answered for
+// the round to end" and pickClue's allow-list, so excluding them here both
+// keeps completion detection reachable and blocks picking one server-side.
 function currentRoundClueIds(board: Board, roundIndex: number): string[] {
   const round = board.rounds[roundIndex];
   if (!round) return [];
-  return round.categories.flatMap((c) => c.clues.map((cl) => cl.id));
+  return round.categories.flatMap((c) => c.clues.filter((cl) => !cl.unrevealed).map((cl) => cl.id));
 }
 
 // Decide who picks the next clue, per the game's pickMode. `scores` is the
