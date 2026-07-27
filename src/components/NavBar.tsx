@@ -50,6 +50,15 @@ function VolumeIcon({ muted, className }: { muted: boolean; className?: string }
   );
 }
 
+function BellIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  );
+}
+
 function GearIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
@@ -219,6 +228,20 @@ export default function NavBar() {
             </button>
             <span className="h-5 w-px bg-[color:var(--hairline)]" aria-hidden />
             <Link
+              href="/changelog"
+              aria-current={isActive(pathname, "/changelog") ? "page" : undefined}
+              title="What's new"
+              aria-label="What's new"
+              className={`grid place-items-center h-9 w-9 transition-colors ${
+                isActive(pathname, "/changelog")
+                  ? "text-gold bg-shell-raised"
+                  : "text-blue-200/75 hover:text-gold hover:bg-shell-raised"
+              }`}
+            >
+              <BellIcon className="h-4.5 w-4.5" />
+            </Link>
+            <span className="h-5 w-px bg-[color:var(--hairline)]" aria-hidden />
+            <Link
               href="/settings"
               onClick={onSettingsClick}
               title={isActive(pathname, "/settings") ? "Back" : "Settings"}
@@ -278,7 +301,7 @@ export default function NavBar() {
       {/* Mobile dropdown menu */}
       {menuOpen && (
         <nav className="md:hidden border-t border-[color:var(--hairline)] bg-shell px-3 py-2 flex flex-col">
-          {[...TABS, { href: "/settings", label: "Settings" }].map((t) => {
+          {[...TABS, { href: "/changelog", label: "What's New" }, { href: "/settings", label: "Settings" }].map((t) => {
             const active = isActive(pathname, t.href);
             const isSettingsBack = t.href === "/settings" && active;
             return (
