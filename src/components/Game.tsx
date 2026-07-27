@@ -1181,9 +1181,9 @@ export default function Game({ date }: { date?: string }) {
           </div>
 
           {/* md and up: the full grid, unchanged */}
-          <div className="hidden md:block overflow-x-auto pb-2">
+          <div className="hidden md:block w-full overflow-x-auto pb-2">
             <div
-              className="grid grid-cols-6 gap-1.5 min-w-[680px]"
+              className="grid grid-cols-6 gap-1.5 w-full min-w-[680px]"
               role="grid"
               aria-label={`${round.name} board`}
               onKeyDown={onGridKeyDown}
