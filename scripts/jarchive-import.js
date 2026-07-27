@@ -156,17 +156,30 @@ async function main() {
 
   // Firestore only needed for real writes.
   let db = null;
+  let existingGameIds = new Set();
   if (!dry) {
     const { initializeApp, applicationDefault } = require("firebase-admin/app");
     const { getFirestore } = require("firebase-admin/firestore");
     db = getFirestore(initializeApp({ credential: applicationDefault() }));
+    // Boards are keyed by air date, not game_id, and a re-swept range would
+    // otherwise re-fetch (and re-sleep DELAY_MS for) every game_id we already
+    // imported. Loading the known set up front turns re-fetches of those into
+    // a free in-memory skip instead.
+    const known = await db.collection("historicalBoards").select("gameId").get();
+    existingGameIds = new Set(known.docs.map((d) => d.get("gameId")));
+    console.log(`Already have ${existingGameIds.size} games — those will be skipped without fetching.`);
   }
 
   const from = Number(arg("from") ?? arg("game"));
   const count = Number(arg("count") ?? 1);
   let ok = 0,
-    skip = 0;
+    skip = 0,
+    known_ = 0;
   for (let gid = from; gid < from + count; gid++) {
+    if (existingGameIds.has(gid)) {
+      known_++;
+      continue;
+    }
     try {
       const html = await fetchGame(gid);
       const board = parseGame(html, gid);
@@ -183,7 +196,7 @@ async function main() {
     }
     await sleep(DELAY_MS);
   }
-  console.log(`\nDone. ${ok} imported, ${skip} skipped.`);
+  console.log(`\nDone. ${ok} imported, ${skip} skipped (unavailable/incomplete), ${known_} already had.`);
 }
 
 main().catch((e) => {
