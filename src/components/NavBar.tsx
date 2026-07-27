@@ -132,7 +132,7 @@ export default function NavBar() {
   const pending = (data?.invites.length ?? 0) + (data?.requests.length ?? 0) + totalUnread;
 
   return (
-    <header className="sticky top-0 z-40 bg-shell/95 backdrop-blur border-b border-[color:var(--hairline)]">
+    <header className="sticky top-0 z-40 bg-shell/95 backdrop-blur border-b border-[color:var(--hairline)] overflow-x-clip">
       <div className="flex items-center h-14 px-3 sm:px-5 gap-2">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2 shrink-0 group">
@@ -147,8 +147,13 @@ export default function NavBar() {
           </span>
         </Link>
 
-        {/* Primary tabs — desktop */}
-        <nav className="hidden md:flex items-center gap-1 ml-4">
+        {/* Primary tabs — desktop. Shown at lg (not md): the full desktop
+            nav (7 tabs + brand + the control cluster + username + Sign out)
+            needs ~1000px to lay out, so switching at md (768px) left a
+            768–1024 dead zone where it overflowed the page horizontally —
+            which read as unexplained whitespace on wide content like the
+            board. lg also matches where the friends rail appears. */}
+        <nav className="hidden lg:flex items-center gap-1 ml-4">
           {TABS.map((t) => {
             const active = isActive(pathname, t.href);
             return (
@@ -176,8 +181,8 @@ export default function NavBar() {
 
         <div className="flex-1" />
 
-        {/* Account — desktop */}
-        <div className="hidden md:flex items-center gap-3 text-sm">
+        {/* Account — desktop (see the tabs nav above for why lg, not md) */}
+        <div className="hidden lg:flex items-center gap-3 text-sm">
           {/* Music / sound / settings, grouped in one bordered control so they read
               as a unit and don't get lost as bare small glyphs. */}
           <div className="flex items-center rounded-sm border border-[color:var(--hairline)] overflow-hidden">
@@ -272,7 +277,7 @@ export default function NavBar() {
               <Link
                 href="/history"
                 aria-current={isActive(pathname, "/history") ? "page" : undefined}
-                className={`truncate max-w-[12rem] underline-offset-2 hover:underline ${
+                className={`truncate max-w-[10rem] xl:max-w-[12rem] underline-offset-2 hover:underline ${
                   isActive(pathname, "/history") ? "text-gold" : "text-blue-200/85 hover:text-gold"
                 }`}
               >
@@ -295,7 +300,7 @@ export default function NavBar() {
         {/* Mobile menu toggle */}
         <button
           onClick={() => setMenuOpen((v) => !v)}
-          className="md:hidden relative grid place-items-center h-9 w-9 rounded-sm border border-[color:var(--hairline)] text-gold"
+          className="lg:hidden relative grid place-items-center h-9 w-9 rounded-sm border border-[color:var(--hairline)] text-gold"
           aria-label="Menu"
           aria-expanded={menuOpen}
         >
@@ -310,7 +315,7 @@ export default function NavBar() {
 
       {/* Mobile dropdown menu */}
       {menuOpen && (
-        <nav className="md:hidden border-t border-[color:var(--hairline)] bg-shell px-3 py-2 flex flex-col">
+        <nav className="lg:hidden border-t border-[color:var(--hairline)] bg-shell px-3 py-2 flex flex-col">
           {[...TABS, { href: "/patch-notes", label: "Patch Notes" }, { href: "/settings", label: "Settings" }].map((t) => {
             const active = isActive(pathname, t.href);
             const isSettingsBack = t.href === "/settings" && active;
