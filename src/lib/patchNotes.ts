@@ -11,6 +11,32 @@ export interface PatchNoteEntry {
 export const PATCH_NOTES: PatchNoteEntry[] = [
   {
     date: "2026-07-27",
+    title: "The full Jeopardy! archive — 9,000+ episodes",
+    tag: "new",
+    items: [
+      "The archive now holds every real episode we could pull from the J! Archive — over 9,000 of them, from 1984 all the way to this year, each searchable by category and playable.",
+      "Page through the whole thing (it's no longer capped at the newest 150) and narrow it down by date range or by whether you've played a board yet.",
+      "Recent episodes that happen to air on the same day as one of our AI daily boards are kept too, instead of being dropped — no real episode gets lost to a calendar collision.",
+    ],
+  },
+  {
+    date: "2026-07-27",
+    title: "A board that fits your screen",
+    tag: "fixed",
+    items: [
+      "The board now fills the window properly at every size — no more empty space off to the right, and no cramped or cut-off columns at in-between widths.",
+    ],
+  },
+  {
+    date: "2026-07-27",
+    title: "One custom board a day",
+    tag: "improved",
+    items: [
+      "Creating a custom board now has a limit of one per day. Building a board from scratch is a lot of behind-the-scenes AI work, so this keeps the game sustainable to run — you can still play any board, custom or not, as much as you like.",
+    ],
+  },
+  {
+    date: "2026-07-27",
     title: "Real episodes: fixed a wrong-slot clue bug",
     tag: "fixed",
     items: [
