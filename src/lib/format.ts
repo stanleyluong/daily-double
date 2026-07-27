@@ -10,7 +10,11 @@ export function formatDuration(ms: number): string {
 }
 
 export function formatBoardDate(date: string): string {
-  return new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
+  // A historical board whose air date collided with an existing daily
+  // board's gets a "hist-" prefixed key (see jarchive-import.js) — the real
+  // calendar date is always the trailing 10 characters, prefixed or not.
+  const real = date.slice(-10);
+  return new Date(`${real}T12:00:00`).toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
     day: "numeric",

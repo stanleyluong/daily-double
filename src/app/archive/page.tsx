@@ -23,10 +23,12 @@ const KIND_BADGE: Record<HistoricalSummary["kind"], string> = {
   custom: "Custom",
 };
 
-// date is YYYY-MM-DD for daily/historical (directly sortable); custom boards
-// use `custom-{id}` there instead, so sort those by createdAt.
+// date is YYYY-MM-DD for daily/historical (or hist-YYYY-MM-DD for a
+// collision-safe historical key — .slice(-10) strips that prefix, a no-op
+// otherwise); custom boards use `custom-{id}` there instead, so sort those
+// by createdAt.
 function archiveSortKey(row: HistoricalSummary): string {
-  return row.kind === "custom" ? (row.createdAt ?? "") : row.date;
+  return row.kind === "custom" ? (row.createdAt ?? "") : row.date.slice(-10);
 }
 
 const PAGE_SIZE = 150;
@@ -55,7 +57,10 @@ const STATUS_CLASS: Record<BoardStatus, string> = {
 };
 
 function formatDate(date: string): string {
-  return new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
+  // Strips an optional "hist-" collision-safe prefix (see archiveSortKey) —
+  // the real calendar date is always the trailing 10 characters.
+  const real = date.slice(-10);
+  return new Date(`${real}T12:00:00`).toLocaleDateString("en-US", {
     weekday: "short",
     year: "numeric",
     month: "short",

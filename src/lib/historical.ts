@@ -17,7 +17,10 @@ export type ArchiveKind = "daily" | "historical" | "custom";
 export type ArchiveKindFilter = "all" | ArchiveKind;
 
 export interface HistoricalSummary {
-  date: string; // sort/URL key: YYYY-MM-DD (daily/historical) or custom-{id} (custom)
+  // Sort/URL/play key: YYYY-MM-DD for daily/historical, custom-{id} for
+  // custom, or hist-YYYY-MM-DD for a historical episode whose air date
+  // collided with an existing daily board's (see jarchive-import.js).
+  date: string;
   kind: ArchiveKind;
   showNumber?: number; // historical only
   name?: string; // custom only — the creator's title for the board, when given
@@ -25,10 +28,11 @@ export interface HistoricalSummary {
   createdAt?: string; // ISO timestamp — custom only, since `date` isn't a real date there
 }
 
-// Sortable key: `date` is already YYYY-MM-DD for daily/historical, but for
-// custom boards it's `custom-{id}` (not chronological) — use createdAt there.
+// Sortable key: a real calendar date for daily/historical (the trailing 10
+// characters of `date` — a no-op unless it's a "hist-" prefixed collision
+// key), or createdAt for custom boards, since `custom-{id}` isn't chronological.
 function sortKey(row: HistoricalSummary): string {
-  return row.kind === "custom" ? (row.createdAt ?? "") : row.date;
+  return row.kind === "custom" ? (row.createdAt ?? "") : row.date.slice(-10);
 }
 
 export interface HistoricalSearchResult {
@@ -60,15 +64,19 @@ export async function searchHistorical(opts: SearchHistoricalOptions = {}): Prom
     kind === "all" || kind === "custom"
       ? db().collection(CUSTOM_BOARDS).select("name", "categoryTitles", "createdAt").get()
       : null,
-    // ID-only, no per-doc read — used below to skip a historical row whose
-    // date collides with a daily board's (getBoardForDate always resolves
-    // that date to the daily board, so the historical one would be an
-    // unreachable duplicate row with the same key). Fetched unconditionally
-    // since a `kind=historical` search still needs it even when dailySnap
-    // above is skipped.
-    db().collection(DAILY_BOARDS).listDocuments(),
+    // ID-only, no field reads — belt-and-suspenders against a historical row
+    // keyed by a bare date that collides with a daily board's (the importer
+    // now avoids this going forward via a "hist-" prefixed id instead, but
+    // this still guards against any stray case). A real query, not
+    // listDocuments() — jeopardyBoards/{date}/scores gets written for a
+    // *played* historical board too regardless of its own date (scores.ts's
+    // BOARDS constant is jeopardyBoards for every board kind), which would
+    // make listDocuments() return a phantom parent doc for a date that was
+    // never actually a daily board. Fetched unconditionally since a
+    // `kind=historical` search still needs it even when dailySnap is skipped.
+    db().collection(DAILY_BOARDS).select().get(),
   ]);
-  const dailyDates = new Set(dailyBoardIds.map((ref) => ref.id));
+  const dailyDates = new Set(dailyBoardIds.docs.map((d) => d.id));
 
   const rows: HistoricalSummary[] = [];
 

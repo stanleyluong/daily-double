@@ -13,8 +13,12 @@ export async function GET(request: Request) {
 
   const today = todayKey();
   const date = new URL(request.url).searchParams.get("date") ?? today;
-  // Custom boards have no "future date" notion; only real dates are capped at today.
-  if (!isValidBoardKey(date) || (!date.startsWith("custom-") && date > today)) {
+  // Custom boards and "hist-" (collision-safe historical) keys have no
+  // "future date" notion; only plain real dates are capped at today. A
+  // "hist-" key would otherwise always fail this check — string comparison
+  // puts any "hist-..." after "2026-...", since 'h' sorts past every digit.
+  const skipFutureCheck = date.startsWith("custom-") || date.startsWith("hist-");
+  if (!isValidBoardKey(date) || (!skipFutureCheck && date > today)) {
     return NextResponse.json({ error: "Invalid date." }, { status: 400 });
   }
 

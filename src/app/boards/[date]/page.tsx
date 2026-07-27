@@ -3,7 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Game from "@/components/Game";
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// Accepts a plain date or a "hist-" prefixed collision-safe historical key
+// (see jarchive-import.js) — never a custom-{id} key, those route to /custom.
+const DATE_RE = /^(?:hist-)?\d{4}-\d{2}-\d{2}$/;
 
 export async function generateMetadata({
   params,
@@ -11,9 +13,10 @@ export async function generateMetadata({
   params: Promise<{ date: string }>;
 }): Promise<Metadata> {
   const { date } = await params;
+  const display = date.slice(-10);
   return {
-    title: `${date} board — Daily Double`,
-    description: `Replay the Daily Double board from ${date}.`,
+    title: `${display} board — Daily Double`,
+    description: `Replay the Daily Double board from ${display}.`,
   };
 }
 

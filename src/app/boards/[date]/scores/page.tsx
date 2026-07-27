@@ -5,7 +5,9 @@ import { getBoardForDate } from "@/lib/jeopardy";
 import { formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
 import { topScores } from "@/lib/scores";
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// Accepts a plain date or a "hist-" prefixed collision-safe historical key
+// (see jarchive-import.js) — never a custom-{id} key, those route to /custom.
+const DATE_RE = /^(?:hist-)?\d{4}-\d{2}-\d{2}$/;
 
 export async function generateMetadata({
   params,
@@ -13,9 +15,10 @@ export async function generateMetadata({
   params: Promise<{ date: string }>;
 }): Promise<Metadata> {
   const { date } = await params;
+  const display = date.slice(-10);
   return {
-    title: `${date} leaderboard — Daily Double`,
-    description: `Every score posted on the Daily Double board from ${date}.`,
+    title: `${display} leaderboard — Daily Double`,
+    description: `Every score posted on the Daily Double board from ${display}.`,
   };
 }
 

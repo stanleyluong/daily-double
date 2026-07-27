@@ -731,11 +731,17 @@ export function isValidDateKey(date: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(date);
 }
 
-// A playable board key is a date (daily/historical board) or a custom-board
-// key. Used by the play/judge/scores routes so custom boards flow through the
-// same endpoints.
+// A playable board key is a date (daily/historical board), a custom-board
+// key, or a `hist-{date}` key — a historical episode whose air date collides
+// with an existing daily board's (see jarchive-import.js and
+// getBoardForDate's "hist-" branch below). Used by the play/judge/scores
+// routes so every board kind flows through the same endpoints.
 export function isValidBoardKey(key: string): boolean {
-  return isValidDateKey(key) || /^custom-[A-Za-z0-9]{6,}$/.test(key);
+  return (
+    isValidDateKey(key) ||
+    /^custom-[A-Za-z0-9]{6,}$/.test(key) ||
+    /^hist-\d{4}-\d{2}-\d{2}$/.test(key)
+  );
 }
 
 const BOARDS = "jeopardyBoards";
@@ -769,6 +775,26 @@ export async function getBoardForDate(date: string): Promise<Board | null> {
     return board;
   }
 
+  // A historical episode whose air date collided with an existing daily
+  // board's gets a "hist-" prefixed id instead of losing the date slot to
+  // the daily board (see jarchive-import.js). The prefix already
+  // unambiguously means "historical", so this skips the jeopardyBoards
+  // check entirely — unlike the plain-date case below, there's no
+  // ambiguity to resolve by priority.
+  if (date.startsWith("hist-")) {
+    const hist = await db().collection(HISTORICAL_BOARDS).doc(date).get();
+    if (!hist.exists) return null;
+    const data = hist.data()!;
+    const board: Board = {
+      boardId: `jarchive-${data.gameId ?? date}`,
+      date,
+      rounds: data.rounds,
+      final: data.final ?? undefined,
+    };
+    memo.set(date, board);
+    return board;
+  }
+
   const ref = db().collection(BOARDS).doc(date);
   const snap = await ref.get();
   if (snap.exists) {
@@ -777,9 +803,11 @@ export async function getBoardForDate(date: string): Promise<Board | null> {
     return board;
   }
 
-  // Historical J-Archive boards are keyed by real air date (e.g. 1995-03-10),
-  // which never collides with a daily-board date, so falling back here makes
-  // every real episode fully playable/judgeable through the exact same flow.
+  // Historical J-Archive boards are keyed by real air date (e.g. 1995-03-10).
+  // Falling back here (after the daily-board check above) makes every real
+  // episode fully playable/judgeable through the exact same flow — except
+  // for a date that collides with a daily board, which never reaches this
+  // point under its plain date at all; see the "hist-" branch above.
   const hist = await db().collection(HISTORICAL_BOARDS).doc(date).get();
   if (hist.exists) {
     const data = hist.data()!;
