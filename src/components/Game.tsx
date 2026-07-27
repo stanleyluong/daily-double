@@ -1091,11 +1091,14 @@ export default function Game({ date }: { date?: string }) {
         /* Board */
         <>
           {/* Mobile: a 6-column grid at that width is either too cramped to
-              tap or forces horizontal scrolling, so below `sm` it's stacked
+              tap or forces horizontal scrolling, so below `md` it's stacked
               category strips instead — every clue always visible, no
-              expand/tap-to-open step. Same openClue() click handler as the
-              grid below; just a different layout. */}
-          <div className="sm:hidden space-y-1.5">
+              expand/tap-to-open step. The grid below has a 680px floor
+              (min-w-[680px]) so it needs `md` (768px), not `sm` (640px), or
+              there's a dead zone where neither layout fits the viewport.
+              Same openClue() click handler as the grid below; just a
+              different layout. */}
+          <div className="md:hidden space-y-1.5">
             {round.categories.map((cat, col) => {
               const answerable = cat.clues.filter((c) => !c.unrevealed);
               const answeredInCat = answerable.filter((c) => results[c.id]).length;
@@ -1177,8 +1180,8 @@ export default function Game({ date }: { date?: string }) {
             })}
           </div>
 
-          {/* sm and up: the full grid, unchanged */}
-          <div className="hidden sm:block overflow-x-auto pb-2">
+          {/* md and up: the full grid, unchanged */}
+          <div className="hidden md:block overflow-x-auto pb-2">
             <div
               className="grid grid-cols-6 gap-1.5 min-w-[680px]"
               role="grid"
