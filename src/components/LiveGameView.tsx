@@ -35,6 +35,7 @@ import {
 import { isMuted, playSound, setMuted, type SoundName } from "@/lib/sounds";
 import { useFriends } from "@/components/FriendsProvider";
 import { inviteFriend } from "@/lib/friendsClient";
+import { useModalA11y } from "@/lib/useModalA11y";
 
 // Derived sub-phase of an "active" clue, computed from the absolute deadlines
 // on the game doc against the local clock (good enough for a casual game; a
@@ -78,6 +79,7 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
   const [toast, setToast] = useState<string | null>(null);
   const [muted, setMutedState] = useState(() => (typeof window !== "undefined" ? isMuted() : false));
   const [viewBoard, setViewBoard] = useState(false); // non-picker chose to watch the board
+  const pauseModalRef = useModalA11y();
   const resolvedFiredFor = useRef<string | null>(null);
   const droppedFlaggedRef = useRef<Set<string>>(new Set());
 
@@ -556,8 +558,15 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
       {/* Pause overlay — any player can resume */}
       {game.paused && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="text-center max-w-sm">
-            <p className="font-display text-6xl tracking-widest text-gold mb-3">PAUSED</p>
+          <div
+            ref={pauseModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pause-modal-heading"
+            tabIndex={-1}
+            className="text-center max-w-sm"
+          >
+            <p id="pause-modal-heading" className="font-display text-6xl tracking-widest text-gold mb-3">PAUSED</p>
             <p className="text-blue-200/70 mb-6">
               {game.pausedReason === "disconnect"
                 ? `${game.pausedBy ? nameFor(game.pausedBy) : "A player"} disconnected. Waiting for them to reconnect — or resume without them.`

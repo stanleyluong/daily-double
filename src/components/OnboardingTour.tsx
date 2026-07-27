@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { hasSeenTour, markTourSeen } from "@/lib/onboarding";
+import { useModalA11y } from "@/lib/useModalA11y";
 
 const STEPS: { title: string; body: string }[] = [
   {
@@ -35,6 +36,8 @@ export default function OnboardingTour() {
     setOpen(false);
   };
 
+  const modalRef = useModalA11y(close);
+
   if (!open) return null;
   const s = STEPS[step];
   const last = step === STEPS.length - 1;
@@ -42,6 +45,11 @@ export default function OnboardingTour() {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4" onClick={close}>
       <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="onboarding-tour-heading"
+        tabIndex={-1}
         className="w-full max-w-sm bg-board rounded-lg shadow-2xl p-6 text-center"
         onClick={(e) => e.stopPropagation()}
       >
@@ -49,13 +57,14 @@ export default function OnboardingTour() {
           {STEPS.map((_, i) => (
             <span
               key={i}
+              aria-current={i === step ? "step" : undefined}
               className={`h-1.5 rounded-full transition-all ${
                 i === step ? "w-6 bg-gold" : "w-1.5 bg-blue-300/25"
               }`}
             />
           ))}
         </div>
-        <p className="font-display text-2xl tracking-wide text-gold mb-2">{s.title}</p>
+        <p id="onboarding-tour-heading" className="font-display text-2xl tracking-wide text-gold mb-2">{s.title}</p>
         <p className="text-blue-100/80 text-sm leading-relaxed mb-6">{s.body}</p>
         <div className="flex items-center justify-between">
           <button onClick={close} className="text-sm text-blue-200/60 hover:text-blue-100">

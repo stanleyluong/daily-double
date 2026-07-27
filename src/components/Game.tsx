@@ -7,6 +7,7 @@ import type { PercentileStats, ScoreRow } from "@/lib/scores";
 import { formatBoardDate, formatDuration, formatMoney } from "@/lib/format";
 import { readAutoAdvance, type AutoAdvance } from "@/lib/prefs";
 import { playSound, preloadSounds, stopSound } from "@/lib/sounds";
+import { useModalA11y } from "@/lib/useModalA11y";
 import PercentileMeter from "@/components/PercentileMeter";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
@@ -194,6 +195,7 @@ export default function Game({ date }: { date?: string }) {
   );
   // Keyboard-shortcuts overlay (opened by the ⌨ button or the "?" hotkey).
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const shortcutsModalRef = useModalA11y();
   const [loadingMsg, setLoadingMsg] = useState(0);
   const [copied, setCopied] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -1624,11 +1626,16 @@ export default function Game({ date }: { date?: string }) {
           onClick={() => setShowShortcuts(false)}
         >
           <div
+            ref={shortcutsModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="shortcuts-modal-heading"
+            tabIndex={-1}
             className="w-full max-w-md bg-board rounded-lg shadow-2xl p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <p className="font-display text-2xl tracking-wide text-gold">Keyboard Shortcuts</p>
+              <p id="shortcuts-modal-heading" className="font-display text-2xl tracking-wide text-gold">Keyboard Shortcuts</p>
               <button
                 onClick={() => setShowShortcuts(false)}
                 aria-label="Close"

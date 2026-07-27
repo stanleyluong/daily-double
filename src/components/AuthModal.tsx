@@ -9,6 +9,7 @@ import {
   signInWithPopup,
 } from "firebase/auth";
 import { auth } from "@/lib/firebaseClient";
+import { useModalA11y } from "@/lib/useModalA11y";
 
 interface AuthModalProps {
   onClose: () => void;
@@ -26,6 +27,7 @@ export default function AuthModal({ onClose, message }: AuthModalProps) {
   // descendants — which would otherwise clip the overlay to the header box.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  const modalRef = useModalA11y(onClose);
 
   const withGoogle = async () => {
     setBusy(true);
@@ -69,10 +71,15 @@ export default function AuthModal({ onClose, message }: AuthModalProps) {
           modal taller than a small mobile viewport never clips the top). */}
       <div className="flex min-h-full items-center justify-center p-4">
         <div
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="auth-modal-heading"
+          tabIndex={-1}
           className="w-full max-w-sm bg-board rounded-lg shadow-2xl p-6 my-6"
           onClick={(e) => e.stopPropagation()}
         >
-        <p className="font-display text-2xl tracking-wider text-gold mb-1">
+        <p id="auth-modal-heading" className="font-display text-2xl tracking-wider text-gold mb-1">
           {mode === "signin" ? "Sign in" : "Create account"}
         </p>
         {message && <p className="text-sm text-blue-200/70 mb-4">{message}</p>}
