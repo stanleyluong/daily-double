@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CHANGELOG } from "@/lib/changelog";
+import { PATCH_NOTES } from "@/lib/patchNotes";
 
 export const metadata: Metadata = {
-  title: "What's New — Daily Double",
+  title: "Patch Notes — Daily Double",
   description: "Recent changes and improvements to Daily Double.",
 };
 
@@ -21,12 +21,12 @@ function formatDate(date: string): string {
   });
 }
 
-export default function ChangelogPage() {
+export default function PatchNotesPage() {
   return (
     <div className="flex flex-col flex-1 min-h-screen">
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 md:px-8 py-10">
         <header className="text-center mb-10">
-          <h1 className="font-display text-4xl md:text-5xl tracking-wider text-gold">What&apos;s New</h1>
+          <h1 className="font-display text-4xl md:text-5xl tracking-wider text-gold">Patch Notes</h1>
           <p className="text-blue-200/70 mt-2">Recent changes and improvements to Daily Double.</p>
           <Link href="/" className="inline-block mt-3 text-gold/80 hover:text-gold underline">
             ← Back to today&apos;s board
@@ -34,7 +34,7 @@ export default function ChangelogPage() {
         </header>
 
         <ol className="relative border-l border-board pl-6 space-y-10">
-          {CHANGELOG.map((entry, i) => (
+          {PATCH_NOTES.map((entry, i) => (
             <li key={i} className="relative">
               <span className="absolute -left-[1.90rem] top-1.5 h-3 w-3 rounded-full bg-gold ring-4 ring-background" />
               <p className="font-mono text-xs uppercase tracking-widest text-blue-200/60 mb-1">

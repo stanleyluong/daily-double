@@ -228,12 +228,12 @@ export default function NavBar() {
             </button>
             <span className="h-5 w-px bg-[color:var(--hairline)]" aria-hidden />
             <Link
-              href="/changelog"
-              aria-current={isActive(pathname, "/changelog") ? "page" : undefined}
-              title="What's new"
-              aria-label="What's new"
+              href="/patch-notes"
+              aria-current={isActive(pathname, "/patch-notes") ? "page" : undefined}
+              title="Patch notes"
+              aria-label="Patch notes"
               className={`grid place-items-center h-9 w-9 transition-colors ${
-                isActive(pathname, "/changelog")
+                isActive(pathname, "/patch-notes")
                   ? "text-gold bg-shell-raised"
                   : "text-blue-200/75 hover:text-gold hover:bg-shell-raised"
               }`}
@@ -301,7 +301,7 @@ export default function NavBar() {
       {/* Mobile dropdown menu */}
       {menuOpen && (
         <nav className="md:hidden border-t border-[color:var(--hairline)] bg-shell px-3 py-2 flex flex-col">
-          {[...TABS, { href: "/changelog", label: "What's New" }, { href: "/settings", label: "Settings" }].map((t) => {
+          {[...TABS, { href: "/patch-notes", label: "Patch Notes" }, { href: "/settings", label: "Settings" }].map((t) => {
             const active = isActive(pathname, t.href);
             const isSettingsBack = t.href === "/settings" && active;
             return (

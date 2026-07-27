@@ -1,14 +1,14 @@
 // Player-facing patch notes. Newest first. Keep entries short and in the
 // player's language (what changed for them), not implementation detail.
 
-export interface ChangelogEntry {
+export interface PatchNoteEntry {
   date: string; // YYYY-MM-DD
   title: string;
   tag?: "new" | "improved" | "fixed";
   items: string[];
 }
 
-export const CHANGELOG: ChangelogEntry[] = [
+export const PATCH_NOTES: PatchNoteEntry[] = [
   {
     date: "2026-07-27",
     title: "Real episodes: fixed a wrong-slot clue bug",
