@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import type { ArchiveKindFilter, HistoricalSummary } from "@/lib/historical";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
@@ -28,6 +28,8 @@ const KIND_BADGE: Record<HistoricalSummary["kind"], string> = {
 function archiveSortKey(row: HistoricalSummary): string {
   return row.kind === "custom" ? (row.createdAt ?? "") : row.date;
 }
+
+const PAGE_SIZE = 150;
 
 type BoardStatus = "completed" | "in_progress" | "new";
 
@@ -66,6 +68,8 @@ function ArchivePageInner() {
     urlKind === "daily" || urlKind === "historical" || urlKind === "custom" ? urlKind : "all";
   const initialQuery = searchParams.get("q") ?? "";
   const [rows, setRows] = useState<HistoricalSummary[] | null>(null);
+  const [total, setTotal] = useState(0); // total matches across all pages, not just this page's rows
+  const [offset, setOffset] = useState(0);
   const [query, setQuery] = useState(initialQuery);
   const [active, setActive] = useState(initialQuery); // the query actually applied
   const [kind, setKind] = useState<ArchiveKindFilter>(initialKind);
@@ -127,19 +131,26 @@ function ArchivePageInner() {
     }
   };
 
-  const load = useCallback(async (q: string, k: ArchiveKindFilter) => {
+  // `off` defaults to 0 (a new search/filter always restarts at page one) —
+  // callers only pass a nonzero offset when paging forward/back within the
+  // current search.
+  const load = useCallback(async (q: string, k: ArchiveKindFilter, off = 0) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (q) params.set("q", q);
       if (k !== "all") params.set("kind", k);
+      if (off) params.set("offset", String(off));
       const qs = params.toString();
       const res = await fetch(`/api/historical${qs ? `?${qs}` : ""}`);
       const data = await res.json();
       setRows((data.boards as HistoricalSummary[]) ?? []);
+      setTotal((data.total as number | undefined) ?? 0);
+      setOffset(off);
       setActive(q);
     } catch {
       setRows([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -170,13 +181,20 @@ function ArchivePageInner() {
     load(query.trim(), k);
   };
 
-  const sorted = rows
-    ? [...rows].sort((a, b) => {
-        const ka = archiveSortKey(a);
-        const kb = archiveSortKey(b);
-        return asc ? (ka < kb ? -1 : 1) : ka < kb ? 1 : -1;
-      })
-    : null;
+  const sorted = useMemo(
+    () =>
+      rows
+        ? [...rows].sort((a, b) => {
+            const ka = archiveSortKey(a);
+            const kb = archiveSortKey(b);
+            return asc ? (ka < kb ? -1 : 1) : ka < kb ? 1 : -1;
+          })
+        : null,
+    [rows, asc]
+  );
+
+  const hasPrev = offset > 0;
+  const hasNext = offset + PAGE_SIZE < total;
 
   const highlight = (cat: string) => {
     if (!active) return cat;
@@ -262,9 +280,9 @@ function ArchivePageInner() {
             ? "Searching…"
             : rows === null
               ? ""
-              : active
-                ? `${sorted!.length} board${sorted!.length === 1 ? "" : "s"} with a category matching “${active}”`
-                : `${sorted!.length} most recent board${sorted!.length === 1 ? "" : "s"}`}
+              : `${total} board${total === 1 ? "" : "s"}${active ? ` with a category matching “${active}”` : ""}${
+                  total > PAGE_SIZE ? ` — showing ${offset + 1}–${offset + sorted!.length}` : ""
+                }`}
         </p>
 
         {rows === null ? (
@@ -349,6 +367,28 @@ function ArchivePageInner() {
             </table>
           </div>
           )
+        )}
+
+        {rows !== null && total > PAGE_SIZE && (
+          <div className="flex items-center justify-center gap-4 mt-6">
+            <button
+              onClick={() => load(active, kind, Math.max(0, offset - PAGE_SIZE))}
+              disabled={!hasPrev || loading}
+              className="font-display tracking-wider text-sm bg-board-deep border border-blue-300/20 hover:border-gold/50 text-blue-100 px-4 py-2 rounded disabled:opacity-40 disabled:hover:border-blue-300/20"
+            >
+              ← Previous
+            </button>
+            <span className="text-xs text-blue-200/60">
+              Page {Math.floor(offset / PAGE_SIZE) + 1} of {Math.ceil(total / PAGE_SIZE)}
+            </span>
+            <button
+              onClick={() => load(active, kind, offset + PAGE_SIZE)}
+              disabled={!hasNext || loading}
+              className="font-display tracking-wider text-sm bg-board-deep border border-blue-300/20 hover:border-gold/50 text-blue-100 px-4 py-2 rounded disabled:opacity-40 disabled:hover:border-blue-300/20"
+            >
+              Next →
+            </button>
+          </div>
         )}
 
         {rows !== null && sorted && sorted.length === 0 && !loading && (

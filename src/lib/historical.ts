@@ -31,11 +31,17 @@ function sortKey(row: HistoricalSummary): string {
   return row.kind === "custom" ? (row.createdAt ?? "") : row.date;
 }
 
+export interface HistoricalSearchResult {
+  rows: HistoricalSummary[];
+  total: number;
+}
+
 export async function searchHistorical(
   query?: string,
-  limit = 150,
-  kind: ArchiveKindFilter = "all"
-): Promise<HistoricalSummary[]> {
+  kind: ArchiveKindFilter = "all",
+  offset = 0,
+  limit = 150
+): Promise<HistoricalSearchResult> {
   const q = (query ?? "").trim().toLowerCase();
 
   const [historicalSnap, dailySnap, customSnap] = await Promise.all([
@@ -85,7 +91,7 @@ export async function searchHistorical(
   }
 
   rows.sort((a, b) => (sortKey(a) < sortKey(b) ? 1 : sortKey(a) > sortKey(b) ? -1 : 0)); // newest first
-  return rows.slice(0, limit);
+  return { rows: rows.slice(offset, offset + limit), total: rows.length };
 }
 
 export async function historicalCount(): Promise<number> {
