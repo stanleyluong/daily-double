@@ -39,6 +39,15 @@ const STATUS_LABEL: Record<BoardStatus, string> = {
   new: "New",
 };
 
+type StatusFilter = "all" | BoardStatus;
+
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "new", label: "New" },
+  { value: "in_progress", label: "In progress" },
+  { value: "completed", label: "Completed" },
+];
+
 const STATUS_CLASS: Record<BoardStatus, string> = {
   completed: "text-gold bg-gold/10 border-gold/40",
   in_progress: "text-blue-100 bg-blue-300/10 border-blue-300/30",
@@ -67,12 +76,20 @@ function ArchivePageInner() {
   const initialKind: ArchiveKindFilter =
     urlKind === "daily" || urlKind === "historical" || urlKind === "custom" ? urlKind : "all";
   const initialQuery = searchParams.get("q") ?? "";
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const urlDateFrom = searchParams.get("dateFrom");
+  const urlDateTo = searchParams.get("dateTo");
+  const initialDateFrom = urlDateFrom && DATE_RE.test(urlDateFrom) ? urlDateFrom : "";
+  const initialDateTo = urlDateTo && DATE_RE.test(urlDateTo) ? urlDateTo : "";
   const [rows, setRows] = useState<HistoricalSummary[] | null>(null);
   const [total, setTotal] = useState(0); // total matches across all pages, not just this page's rows
   const [offset, setOffset] = useState(0);
   const [query, setQuery] = useState(initialQuery);
   const [active, setActive] = useState(initialQuery); // the query actually applied
   const [kind, setKind] = useState<ArchiveKindFilter>(initialKind);
+  const [dateFrom, setDateFrom] = useState(initialDateFrom);
+  const [dateTo, setDateTo] = useState(initialDateTo);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all"); // client-side only — see below
   const [asc, setAsc] = useState(false); // date sort direction; false = newest first
   const [loading, setLoading] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
@@ -131,15 +148,24 @@ function ArchivePageInner() {
     }
   };
 
+  interface Filters {
+    q: string;
+    k: ArchiveKindFilter;
+    dateFrom: string;
+    dateTo: string;
+  }
+
   // `off` defaults to 0 (a new search/filter always restarts at page one) —
   // callers only pass a nonzero offset when paging forward/back within the
   // current search.
-  const load = useCallback(async (q: string, k: ArchiveKindFilter, off = 0) => {
+  const load = useCallback(async (f: Filters, off = 0) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (q) params.set("q", q);
-      if (k !== "all") params.set("kind", k);
+      if (f.q) params.set("q", f.q);
+      if (f.k !== "all") params.set("kind", f.k);
+      if (f.dateFrom) params.set("dateFrom", f.dateFrom);
+      if (f.dateTo) params.set("dateTo", f.dateTo);
       if (off) params.set("offset", String(off));
       const qs = params.toString();
       const res = await fetch(`/api/historical${qs ? `?${qs}` : ""}`);
@@ -147,7 +173,7 @@ function ArchivePageInner() {
       setRows((data.boards as HistoricalSummary[]) ?? []);
       setTotal((data.total as number | undefined) ?? 0);
       setOffset(off);
-      setActive(q);
+      setActive(f.q);
     } catch {
       setRows([]);
       setTotal(0);
@@ -157,18 +183,20 @@ function ArchivePageInner() {
   }, []);
 
   useEffect(() => {
-    load(initialQuery.trim(), initialKind);
+    load({ q: initialQuery.trim(), k: initialKind, dateFrom: initialDateFrom, dateTo: initialDateTo });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Reflect the applied filters back into the URL (replace, not push — the
   // back button shouldn't step through every filter click).
   const syncUrl = useCallback(
-    (q: string, k: ArchiveKindFilter) => {
+    (f: Filters) => {
       const params = new URLSearchParams();
       if (forGame) params.set("forGame", forGame);
-      if (k !== "all") params.set("kind", k);
-      if (q) params.set("q", q);
+      if (f.k !== "all") params.set("kind", f.k);
+      if (f.q) params.set("q", f.q);
+      if (f.dateFrom) params.set("dateFrom", f.dateFrom);
+      if (f.dateTo) params.set("dateTo", f.dateTo);
       const qs = params.toString();
       router.replace(`/archive${qs ? `?${qs}` : ""}`, { scroll: false });
     },
@@ -177,8 +205,17 @@ function ArchivePageInner() {
 
   const changeKind = (k: ArchiveKindFilter) => {
     setKind(k);
-    syncUrl(query.trim(), k);
-    load(query.trim(), k);
+    const f = { q: query.trim(), k, dateFrom, dateTo };
+    syncUrl(f);
+    load(f);
+  };
+
+  const applyDateRange = (nextFrom: string, nextTo: string) => {
+    setDateFrom(nextFrom);
+    setDateTo(nextTo);
+    const f = { q: query.trim(), k: kind, dateFrom: nextFrom, dateTo: nextTo };
+    syncUrl(f);
+    load(f);
   };
 
   const sorted = useMemo(
@@ -195,6 +232,18 @@ function ArchivePageInner() {
 
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
+
+  // Status is per-account data the search API never sees, so this filters
+  // only the rows already on this page — not a true cross-page filter. The
+  // "N match on this page" note below makes that scope explicit.
+  const visible = useMemo(() => {
+    if (!sorted || statusFilter === "all" || !user || !completed || !started) return sorted;
+    return sorted.filter((b) => {
+      if (statusFilter === "completed") return completed.has(b.date);
+      if (statusFilter === "in_progress") return started.has(b.date) && !completed.has(b.date);
+      return !started.has(b.date) && !completed.has(b.date); // "new"
+    });
+  }, [sorted, statusFilter, user, started, completed]);
 
   const highlight = (cat: string) => {
     if (!active) return cat;
@@ -240,11 +289,50 @@ function ArchivePageInner() {
           <FilterPills options={KIND_FILTERS} value={kind} onChange={changeKind} />
         </div>
 
+        {user && (
+          <div className="mb-4">
+            <FilterPills options={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} />
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-6 text-sm">
+          <label className="text-blue-200/60" htmlFor="archive-date-from">
+            From
+          </label>
+          <input
+            id="archive-date-from"
+            type="date"
+            value={dateFrom}
+            onChange={(e) => applyDateRange(e.target.value, dateTo)}
+            className="rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-3 py-1.5"
+          />
+          <label className="text-blue-200/60" htmlFor="archive-date-to">
+            to
+          </label>
+          <input
+            id="archive-date-to"
+            type="date"
+            value={dateTo}
+            onChange={(e) => applyDateRange(dateFrom, e.target.value)}
+            className="rounded-lg bg-board border border-blue-300/30 focus:border-gold outline-none px-3 py-1.5"
+          />
+          {(dateFrom || dateTo) && (
+            <button
+              type="button"
+              onClick={() => applyDateRange("", "")}
+              className="text-blue-200/60 hover:text-blue-100 px-2"
+            >
+              Clear dates
+            </button>
+          )}
+        </div>
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            syncUrl(query.trim(), kind);
-            load(query.trim(), kind);
+            const f = { q: query.trim(), k: kind, dateFrom, dateTo };
+            syncUrl(f);
+            load(f);
           }}
           className="flex gap-3 max-w-lg mx-auto mb-6"
         >
@@ -265,8 +353,9 @@ function ArchivePageInner() {
               type="button"
               onClick={() => {
                 setQuery("");
-                syncUrl("", kind);
-                load("", kind);
+                const f = { q: "", k: kind, dateFrom, dateTo };
+                syncUrl(f);
+                load(f);
               }}
               className="text-blue-200/60 hover:text-blue-100 text-sm px-2"
             >
@@ -282,14 +371,18 @@ function ArchivePageInner() {
               ? ""
               : `${total} board${total === 1 ? "" : "s"}${active ? ` with a category matching “${active}”` : ""}${
                   total > PAGE_SIZE ? ` — showing ${offset + 1}–${offset + sorted!.length}` : ""
+                }${
+                  statusFilter !== "all" && user
+                    ? ` (${visible?.length ?? 0} “${STATUS_LABEL[statusFilter]}” on this page)`
+                    : ""
                 }`}
         </p>
 
         {rows === null ? (
           <SkeletonRows rows={8} cols={4} />
         ) : (
-          sorted &&
-          sorted.length > 0 && (
+          visible &&
+          visible.length > 0 && (
           <div className="overflow-x-auto rounded-lg border border-board">
             <table className="w-full text-sm">
               <thead>
@@ -312,7 +405,7 @@ function ArchivePageInner() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((b) => {
+                {visible.map((b) => {
                   const status = statusOf(b.date);
                   return (
                     <tr key={b.date} className="border-t border-board hover:bg-board-deep/40">
@@ -372,7 +465,7 @@ function ArchivePageInner() {
         {rows !== null && total > PAGE_SIZE && (
           <div className="flex items-center justify-center gap-4 mt-6">
             <button
-              onClick={() => load(active, kind, Math.max(0, offset - PAGE_SIZE))}
+              onClick={() => load({ q: active, k: kind, dateFrom, dateTo }, Math.max(0, offset - PAGE_SIZE))}
               disabled={!hasPrev || loading}
               className="font-display tracking-wider text-sm bg-board-deep border border-blue-300/20 hover:border-gold/50 text-blue-100 px-4 py-2 rounded disabled:opacity-40 disabled:hover:border-blue-300/20"
             >
@@ -382,7 +475,7 @@ function ArchivePageInner() {
               Page {Math.floor(offset / PAGE_SIZE) + 1} of {Math.ceil(total / PAGE_SIZE)}
             </span>
             <button
-              onClick={() => load(active, kind, offset + PAGE_SIZE)}
+              onClick={() => load({ q: active, k: kind, dateFrom, dateTo }, offset + PAGE_SIZE)}
               disabled={!hasNext || loading}
               className="font-display tracking-wider text-sm bg-board-deep border border-blue-300/20 hover:border-gold/50 text-blue-100 px-4 py-2 rounded disabled:opacity-40 disabled:hover:border-blue-300/20"
             >
@@ -394,6 +487,17 @@ function ArchivePageInner() {
         {rows !== null && sorted && sorted.length === 0 && !loading && (
           <p className="text-center text-blue-200/60 py-16">
             {active ? `No boards found with a category matching “${active}”.` : "No boards found."}
+          </p>
+        )}
+
+        {rows !== null && sorted && sorted.length > 0 && visible && visible.length === 0 && !loading && (
+          <p className="text-center text-blue-200/60 py-16">
+            No boards on this page match “{STATUS_LABEL[statusFilter as BoardStatus]}”.{" "}
+            {hasNext || hasPrev ? "Try another page, or " : ""}
+            <button onClick={() => setStatusFilter("all")} className="text-gold underline">
+              clear the status filter
+            </button>
+            .
           </p>
         )}
       </main>

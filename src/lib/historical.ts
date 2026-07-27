@@ -36,13 +36,21 @@ export interface HistoricalSearchResult {
   total: number;
 }
 
-export async function searchHistorical(
-  query?: string,
-  kind: ArchiveKindFilter = "all",
-  offset = 0,
-  limit = 150
-): Promise<HistoricalSearchResult> {
-  const q = (query ?? "").trim().toLowerCase();
+export interface SearchHistoricalOptions {
+  query?: string;
+  kind?: ArchiveKindFilter;
+  offset?: number;
+  limit?: number;
+  // Inclusive YYYY-MM-DD bounds, compared against the same `sortKey` used for
+  // sorting — so for custom boards (keyed by createdAt, an ISO timestamp)
+  // this compares calendar date against timestamp, not two calendar dates.
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export async function searchHistorical(opts: SearchHistoricalOptions = {}): Promise<HistoricalSearchResult> {
+  const { kind = "all", offset = 0, limit = 150, dateFrom, dateTo } = opts;
+  const q = (opts.query ?? "").trim().toLowerCase();
 
   const [historicalSnap, dailySnap, customSnap] = await Promise.all([
     kind === "all" || kind === "historical"
@@ -90,8 +98,21 @@ export async function searchHistorical(
     });
   }
 
-  rows.sort((a, b) => (sortKey(a) < sortKey(b) ? 1 : sortKey(a) > sortKey(b) ? -1 : 0)); // newest first
-  return { rows: rows.slice(offset, offset + limit), total: rows.length };
+  // Compare by the leading YYYY-MM-DD of `sortKey` (a calendar date for
+  // daily/historical, an ISO timestamp for custom) so a bound like "2024-03-01"
+  // matches the whole day regardless of which kind produced the row.
+  const filtered =
+    dateFrom || dateTo
+      ? rows.filter((r) => {
+          const day = sortKey(r).slice(0, 10);
+          if (dateFrom && day < dateFrom) return false;
+          if (dateTo && day > dateTo) return false;
+          return true;
+        })
+      : rows;
+
+  filtered.sort((a, b) => (sortKey(a) < sortKey(b) ? 1 : sortKey(a) > sortKey(b) ? -1 : 0)); // newest first
+  return { rows: filtered.slice(offset, offset + limit), total: filtered.length };
 }
 
 export async function historicalCount(): Promise<number> {
