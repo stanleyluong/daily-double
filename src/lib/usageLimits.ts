@@ -6,12 +6,26 @@ import { db } from "@/lib/firebaseAdmin";
 // can't provide. Everything here is a defense-in-depth layer *under* the hard
 // spend cap set in the Anthropic Console, which is the real guarantee.
 //
-// Counters live at usageLimits/{scope}:{day} and are consumed inside a
-// transaction so concurrent requests can't race past the ceiling. State is
-// keyed by day and simply stops being read after that day rolls over (old
-// docs are harmless; a TTL policy could sweep them, but they're tiny).
+// Counters live at usageLimits/{scope}:{day} and are read+incremented inside a
+// single transaction so concurrent requests can't race past a ceiling. State
+// is keyed by day and simply stops being read after that day rolls over (old
+// docs are harmless and tiny; a TTL policy could sweep them).
 
 const COLLECTION = "usageLimits";
+
+// Custom board generation is the most expensive path (~15 model calls per
+// board, uncached), so it's capped three ways per Pacific day. IP and account
+// are both enforced so one account can't rotate IPs and one IP can't be shared
+// to multiply boards; the global cap bounds total spend even against a
+// distributed / many-identity attack. Each global unit is one board (~15
+// calls) — at 100/day that's ~1,500 generation calls/day worst case.
+const IP_DAILY_CAP = 1;
+const ACCOUNT_DAILY_CAP = 1;
+const GLOBAL_DAILY_CAP = 100;
+
+// Which ceiling a request hit, or "ok" if it was admitted (and all three
+// counters incremented). The route maps each to its own message.
+export type CustomBoardLimit = "ok" | "ip" | "account" | "global";
 
 // Pacific day, matching the game's daily rollover (todayKey in jeopardy.ts).
 // Duplicated here rather than imported to keep this module free of the heavy
@@ -20,39 +34,41 @@ function dayKey(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());
 }
 
-// Atomically increments today's counter for `scope` and returns whether the
-// caller is still within `max`. Returns true (fail-open) if Firestore itself
-// errors — a limiter outage should never take down board creation, and the
-// Console spend cap still bounds the worst case.
-async function consumeDaily(scope: string, max: number): Promise<boolean> {
-  const ref = db().collection(COLLECTION).doc(`${scope}:${dayKey()}`);
+function countOf(snap: FirebaseFirestore.DocumentSnapshot): number {
+  return (snap.exists ? (snap.get("count") as number | undefined) : 0) ?? 0;
+}
+
+// Atomically checks all three custom-board ceilings and, only if none is
+// exceeded, increments all three. Doing it in one transaction (rather than
+// three separate consume-or-deny checks) means a request never burns one
+// counter's slot only to be rejected by another — either the board is
+// admitted and all three tick up together, or nothing changes. Fail-open on a
+// Firestore error: a limiter outage shouldn't take down board creation, and
+// the Console spend cap still bounds the worst case.
+export async function checkCustomBoardLimits(ip: string, uid: string): Promise<CustomBoardLimit> {
+  const day = dayKey();
+  const ipRef = db().collection(COLLECTION).doc(`custom-ip:${ip}:${day}`);
+  const acctRef = db().collection(COLLECTION).doc(`custom-acct:${uid}:${day}`);
+  const globalRef = db().collection(COLLECTION).doc(`custom-global:${day}`);
   try {
     return await db().runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      const count = (snap.exists ? (snap.get("count") as number | undefined) : 0) ?? 0;
-      if (count >= max) return false;
-      tx.set(ref, { count: count + 1, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-      return true;
+      const [ipSnap, acctSnap, globalSnap] = await tx.getAll(ipRef, acctRef, globalRef);
+      const ipCount = countOf(ipSnap);
+      const acctCount = countOf(acctSnap);
+      const globalCount = countOf(globalSnap);
+
+      if (ipCount >= IP_DAILY_CAP) return "ip";
+      if (acctCount >= ACCOUNT_DAILY_CAP) return "account";
+      if (globalCount >= GLOBAL_DAILY_CAP) return "global";
+
+      const stamp = { updatedAt: FieldValue.serverTimestamp() };
+      tx.set(ipRef, { count: ipCount + 1, ...stamp }, { merge: true });
+      tx.set(acctRef, { count: acctCount + 1, ...stamp }, { merge: true });
+      tx.set(globalRef, { count: globalCount + 1, ...stamp }, { merge: true });
+      return "ok";
     });
   } catch (error) {
-    console.error(`usageLimits consumeDaily(${scope}) failed; allowing:`, error);
-    return true;
+    console.error("usageLimits checkCustomBoardLimits failed; allowing:", error);
+    return "ok";
   }
-}
-
-// One custom board per IP per Pacific day. Custom board generation is the most
-// expensive path (~15 model calls per board, uncached), so this is the primary
-// per-caller guard. Consume this BEFORE the global check so a single IP
-// retrying can't burn through the global ceiling on denied attempts.
-export function allowCustomBoardForIp(ip: string): Promise<boolean> {
-  return consumeDaily(`custom-ip:${ip}`, 1);
-}
-
-// Hard ceiling on custom-board generations across ALL callers per day, so total
-// spend stays bounded even under a distributed / many-IP attack that slips past
-// the per-IP limit. Tune to your budget: each unit here is one custom board
-// (~15 model calls). At 100/day that's ~1,500 generation calls/day worst case.
-const GLOBAL_CUSTOM_CAP = 100;
-export function allowGlobalCustomBoard(): Promise<boolean> {
-  return consumeDaily("custom-global", GLOBAL_CUSTOM_CAP);
 }

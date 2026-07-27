@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createCustomBoard } from "@/lib/jeopardy";
 import { uidFromRequest } from "@/lib/requestAuth";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
-import { allowCustomBoardForIp, allowGlobalCustomBoard } from "@/lib/usageLimits";
+import { checkCustomBoardLimits } from "@/lib/usageLimits";
 
 export const dynamic = "force-dynamic";
 // One or two parallel waves of clue generation plus a final — kept small so it
@@ -12,11 +12,10 @@ export const maxDuration = 120;
 export async function POST(request: Request) {
   // Layered spend guards for the app's most expensive path (~15 model calls per
   // board, uncached): a cheap in-memory burst filter first, then durable
-  // per-IP-per-day and global-per-day ceilings (Firestore-backed, so they
-  // survive restarts and span instances). Order matters — the per-IP check
-  // consumes its slot before the global one, so a single IP retrying can't
-  // drain the global ceiling on denied attempts. All of this sits under the
-  // Anthropic Console spend cap, which is the real backstop.
+  // per-IP, per-account, and global daily ceilings (Firestore-backed, so they
+  // survive restarts and span instances), checked+incremented atomically in one
+  // transaction. All of this sits under the Anthropic Console spend cap, which
+  // is the real backstop.
   const ip = clientIp(request);
   if (!rateLimit(`custom:${ip}`, 5, 60_000)) {
     return NextResponse.json({ error: "Slow down — one custom board at a time." }, { status: 429 });
@@ -24,13 +23,14 @@ export async function POST(request: Request) {
   const uid = await uidFromRequest(request);
   if (!uid) return NextResponse.json({ error: "Sign in to create a board." }, { status: 401 });
 
-  if (!(await allowCustomBoardForIp(ip))) {
+  const limit = await checkCustomBoardLimits(ip, uid);
+  if (limit === "ip" || limit === "account") {
     return NextResponse.json(
       { error: "You've already created a custom board today. Try again tomorrow." },
       { status: 429 }
     );
   }
-  if (!(await allowGlobalCustomBoard())) {
+  if (limit === "global") {
     return NextResponse.json(
       { error: "Custom boards are at capacity for today — please try again tomorrow." },
       { status: 503 }
