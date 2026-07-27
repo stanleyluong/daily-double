@@ -11,6 +11,7 @@ import { useModalA11y } from "@/lib/useModalA11y";
 import PercentileMeter from "@/components/PercentileMeter";
 import { useAuth } from "@/components/AuthProvider";
 import AuthModal from "@/components/AuthModal";
+import UnrevealedClueModal from "@/components/UnrevealedClueModal";
 
 type Outcome = "correct" | "wrong" | "passed";
 
@@ -68,10 +69,13 @@ function loadSaved(date: string): SavedGame | null {
   }
 }
 
+// Excludes unrevealed clues (never aired on the original broadcast, for a
+// historical board) — they can never be answered, so counting them here
+// would make roundComplete/finished permanently unreachable.
 function roundClueIds(board: PublicBoard, roundIndex: number): string[] {
   const round = board.rounds[roundIndex];
   if (!round) return [];
-  return round.categories.flatMap((c) => c.clues.map((cl) => cl.id));
+  return round.categories.flatMap((c) => c.clues.filter((cl) => !cl.unrevealed).map((cl) => cl.id));
 }
 
 // Auto-advance target after answering (a keyboard-play convenience): "value"
@@ -80,14 +84,14 @@ function roundClueIds(board: PublicBoard, roundIndex: number): string[] {
 function nextAutoAdvanceCell(
   mode: AutoAdvance,
   from: { row: number; col: number },
-  round: { categories: { clues: { id: string }[] }[] },
+  round: { categories: { clues: { id: string; unrevealed?: boolean }[] }[] },
   answered: Record<string, unknown>
 ): { row: number; col: number } | null {
   const cols = round.categories.length;
   const rows = 5;
   const isOpen = (row: number, col: number) => {
     const clue = round.categories[col]?.clues[row];
-    return !!clue && !(clue.id in answered);
+    return !!clue && !clue.unrevealed && !(clue.id in answered);
   };
 
   if (mode === "value") {
@@ -196,6 +200,9 @@ export default function Game({ date }: { date?: string }) {
   // Keyboard-shortcuts overlay (opened by the ⌨ button or the "?" hotkey).
   const [showShortcuts, setShowShortcuts] = useState(false);
   const shortcutsModalRef = useModalA11y();
+  // Value of the unrevealed-clue explainer currently open, if any (historical
+  // boards only — see PublicClue.unrevealed).
+  const [unrevealedValue, setUnrevealedValue] = useState<number | null>(null);
   const [loadingMsg, setLoadingMsg] = useState(0);
   const [copied, setCopied] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -235,10 +242,15 @@ export default function Game({ date }: { date?: string }) {
     };
   }, []);
 
+  // Excludes unrevealed clues — they can never be answered, so counting them
+  // would make `finished` permanently unreachable for a historical board
+  // with a gap.
   const totalClues = useMemo(
     () =>
-      (board?.rounds.reduce((n, r) => n + r.categories.reduce((m, c) => m + c.clues.length, 0), 0) ?? 0) +
-      (board?.final ? 1 : 0),
+      (board?.rounds.reduce(
+        (n, r) => n + r.categories.reduce((m, c) => m + c.clues.filter((cl) => !cl.unrevealed).length, 0),
+        0
+      ) ?? 0) + (board?.final ? 1 : 0),
     [board]
   );
   const displayedScore = useAnimatedNumber(score);
@@ -1085,7 +1097,8 @@ export default function Game({ date }: { date?: string }) {
               grid below; just a different layout. */}
           <div className="sm:hidden space-y-1.5">
             {round.categories.map((cat, col) => {
-              const answeredInCat = cat.clues.filter((c) => results[c.id]).length;
+              const answerable = cat.clues.filter((c) => !c.unrevealed);
+              const answeredInCat = answerable.filter((c) => results[c.id]).length;
               return (
                 <div key={cat.title} className="bg-board-deep rounded-sm overflow-hidden">
                   <div className="w-full flex items-center justify-between gap-2 p-3 text-left">
@@ -1093,12 +1106,29 @@ export default function Game({ date }: { date?: string }) {
                       {cat.title}
                     </span>
                     <span className="text-xs text-blue-200/60 shrink-0">
-                      {answeredInCat}/{cat.clues.length}
+                      {answeredInCat}/{answerable.length}
                     </span>
                   </div>
                   <div className="grid grid-cols-5 gap-1.5 p-2 pt-0">
                     {cat.clues.map((clue, row) => {
                       const result = results[clue.id];
+                      if (clue.unrevealed) {
+                        return (
+                          <button
+                            key={clue.id}
+                            ref={(el) => {
+                              if (!mobileCellRefs.current[row]) mobileCellRefs.current[row] = [];
+                              mobileCellRefs.current[row][col] = el;
+                            }}
+                            onClick={() => setUnrevealedValue(clue.value)}
+                            aria-label={`$${clue.value}, never aired on the original broadcast. Tap for details.`}
+                            className="rounded-sm min-h-[52px] flex flex-col items-center justify-center gap-0.5 border border-dashed border-blue-300/20 text-blue-200/40 active:text-blue-200/70 transition-colors"
+                          >
+                            <span className="font-display text-sm tracking-wide">${clue.value}</span>
+                            <span className="text-[8px] uppercase tracking-wide">Never aired</span>
+                          </button>
+                        );
+                      }
                       return (
                         <button
                           key={clue.id}
@@ -1171,6 +1201,25 @@ export default function Game({ date }: { date?: string }) {
                   if (!clue) return <div key={`${cat.title}-${row}`} />;
                   const result = results[clue.id];
                   const isFocused = focusedCell.row === row && focusedCell.col === col;
+                  if (clue.unrevealed) {
+                    return (
+                      <button
+                        key={clue.id}
+                        ref={(el) => {
+                          if (!cellRefs.current[row]) cellRefs.current[row] = [];
+                          cellRefs.current[row][col] = el;
+                        }}
+                        onClick={() => setUnrevealedValue(clue.value)}
+                        onFocus={() => setFocusedCell({ row, col })}
+                        tabIndex={isFocused ? 0 : -1}
+                        aria-label={`${cat.title}, $${clue.value}, never aired on the original broadcast. Activate for details.`}
+                        className="rounded-sm min-h-[64px] md:min-h-[76px] flex flex-col items-center justify-center gap-0.5 border border-dashed border-blue-300/20 text-blue-200/40 hover:text-blue-200/70 hover:border-blue-300/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold"
+                      >
+                        <span className="font-display text-xl md:text-2xl tracking-wide">${clue.value}</span>
+                        <span className="text-[10px] uppercase tracking-wide">Never aired</span>
+                      </button>
+                    );
+                  }
                   return (
                     <button
                       key={clue.id}
@@ -1617,6 +1666,10 @@ export default function Game({ date }: { date?: string }) {
           state meant it silently had nowhere to render mid-game. */}
       {showAuthModal && (
         <AuthModal onClose={() => setShowAuthModal(false)} message={authModalMessage} />
+      )}
+
+      {unrevealedValue !== null && (
+        <UnrevealedClueModal value={unrevealedValue} onClose={() => setUnrevealedValue(null)} />
       )}
 
       {/* Keyboard shortcuts overlay */}

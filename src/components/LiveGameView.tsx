@@ -36,6 +36,7 @@ import { isMuted, playSound, setMuted, type SoundName } from "@/lib/sounds";
 import { useFriends } from "@/components/FriendsProvider";
 import { inviteFriend } from "@/lib/friendsClient";
 import { useModalA11y } from "@/lib/useModalA11y";
+import UnrevealedClueModal from "@/components/UnrevealedClueModal";
 
 // Derived sub-phase of an "active" clue, computed from the absolute deadlines
 // on the game doc against the local clock (good enough for a casual game; a
@@ -934,6 +935,7 @@ function LiveBoard({
   canPick: boolean;
   onPick: (clueId: string) => void;
 }) {
+  const [unrevealedValue, setUnrevealedValue] = useState<number | null>(null);
   if (!round) return <p className="text-center text-blue-200/60 py-10">Loading board…</p>;
   return (
     <div className="overflow-x-auto pb-2">
@@ -950,6 +952,19 @@ function LiveBoard({
           round.categories.map((cat) => {
             const clue = cat.clues[row];
             if (!clue) return <div key={`${cat.title}-${row}`} />;
+            if (clue.unrevealed) {
+              return (
+                <button
+                  key={clue.id}
+                  onClick={() => setUnrevealedValue(clue.value)}
+                  aria-label={`$${clue.value}, never aired on the original broadcast. Activate for details.`}
+                  className="rounded-sm min-h-[64px] flex flex-col items-center justify-center gap-0.5 border border-dashed border-blue-300/20 text-blue-200/40 hover:text-blue-200/70 hover:border-blue-300/40 transition-colors"
+                >
+                  <span className="font-display text-lg tracking-wide">${clue.value}</span>
+                  <span className="text-[10px] uppercase tracking-wide">Never aired</span>
+                </button>
+              );
+            }
             const answered = game.answeredClueIds.includes(clue.id);
             return (
               <button
@@ -972,6 +987,9 @@ function LiveBoard({
           })
         )}
       </div>
+      {unrevealedValue !== null && (
+        <UnrevealedClueModal value={unrevealedValue} onClose={() => setUnrevealedValue(null)} />
+      )}
     </div>
   );
 }
