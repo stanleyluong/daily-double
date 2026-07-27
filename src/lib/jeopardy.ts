@@ -3,7 +3,13 @@ import { FieldValue } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 import { db } from "@/lib/firebaseAdmin";
 
-const MODEL = "claude-opus-4-8";
+// Two tiers to keep credit spend down. Generation (writing categories, clues,
+// Final Jeopardy) is a once-per-day-per-board cost where quality matters most,
+// so it uses Sonnet. Judging runs on every answer (though verdicts are cached
+// across users by clue+answer), so it uses the much cheaper Haiku — plenty for
+// "is this response acceptable for this clue."
+const GENERATION_MODEL = "claude-sonnet-5";
+const JUDGE_MODEL = "claude-haiku-4-5";
 
 export interface Clue {
   id: string;
@@ -200,7 +206,7 @@ async function generateCategories(
   const MAX_ATTEMPTS = 3;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const message = await client().messages.create({
-      model: MODEL,
+      model: GENERATION_MODEL,
       max_tokens: 1024,
       output_config: { format: { type: "json_schema", schema: CATEGORIES_SCHEMA } },
       system:
@@ -257,7 +263,7 @@ async function generateClues(
   avoidAnswers: string[] = []
 ): Promise<{ clue: string; answer: string; acceptable: string[] }[]> {
   const message = await client().messages.create({
-    model: MODEL,
+    model: GENERATION_MODEL,
     max_tokens: 2048,
     output_config: { format: { type: "json_schema", schema: CLUES_SCHEMA } },
     system:
@@ -302,7 +308,7 @@ async function regenerateClue(
   avoidAnswers: string[]
 ): Promise<{ clue: string; answer: string; acceptable: string[] }> {
   const message = await client().messages.create({
-    model: MODEL,
+    model: GENERATION_MODEL,
     max_tokens: 512,
     output_config: { format: { type: "json_schema", schema: SINGLE_CLUE_SCHEMA } },
     system:
@@ -475,7 +481,7 @@ async function generateFinalJeopardy(
   avoidAnswers: string[]
 ): Promise<FinalClue> {
   const message = await client().messages.create({
-    model: MODEL,
+    model: GENERATION_MODEL,
     max_tokens: 1024,
     output_config: { format: { type: "json_schema", schema: FINAL_SCHEMA } },
     system:
@@ -933,7 +939,7 @@ export async function judgeAnswer(
   playerAnswer: string
 ): Promise<{ correct: boolean; comment: string }> {
   const message = await client().messages.create({
-    model: MODEL,
+    model: JUDGE_MODEL,
     max_tokens: 512,
     output_config: {
       effort: "low",
@@ -970,7 +976,7 @@ export async function judgeAppeal(
 ): Promise<{ correct: boolean; comment: string }> {
   const cleanReason = (reason ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
   const message = await client().messages.create({
-    model: MODEL,
+    model: JUDGE_MODEL,
     max_tokens: 512,
     output_config: {
       effort: "low",
