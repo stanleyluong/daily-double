@@ -1024,7 +1024,7 @@ export default function Game({ date }: { date?: string }) {
   const round = board.rounds[roundIndex];
 
   return (
-    <div className="w-full max-w-5xl mx-auto">
+    <div className="w-full">
       {/* Scoreboard */}
       <div className="flex items-baseline justify-between mb-4 px-1">
         <div>
