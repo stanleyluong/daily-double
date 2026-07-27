@@ -65,7 +65,9 @@ export async function listFriendsData(
 
   const friendUids = friendsSnap.docs.map((d) => d.id);
   const [presence, h2h] = await Promise.all([
-    Promise.all(friendUids.map((f) => db().collection("presence").doc(f).get())),
+    friendUids.length > 0
+      ? db().getAll(...friendUids.map((f) => db().collection("presence").doc(f)))
+      : Promise.resolve([]),
     headToHeadAllFor(uid),
   ]);
   const now = Date.now();

@@ -13,9 +13,11 @@ export const metadata: Metadata = {
 };
 
 export default async function RankingsPage() {
-  const players = await topRanked(50).catch(() => []);
   const weekKey = weekKeyFor(todayKey());
-  const weekly = await topWeeklyScores(weekKey, 20).catch(() => []);
+  const [players, weekly] = await Promise.all([
+    topRanked(50).catch(() => []),
+    topWeeklyScores(weekKey, 20).catch(() => []),
+  ]);
 
   return (
     <div className="flex flex-col flex-1 min-h-screen">
