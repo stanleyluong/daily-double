@@ -649,7 +649,11 @@ function GameChat({
     <div className="fixed bottom-4 right-4 lg:right-[19rem] z-40 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-[color:var(--hairline)] bg-shell shadow-2xl flex flex-col">
       <div className="flex items-center justify-between px-3 h-10 border-b border-[color:var(--hairline)]">
         <span className="font-display tracking-[0.2em] text-gold text-sm">GAME CHAT</span>
-        <button onClick={() => setOpen(false)} className="text-blue-200/60 hover:text-blue-100 text-lg leading-none">
+        <button
+          onClick={() => setOpen(false)}
+          aria-label="Close chat"
+          className="text-blue-200/60 hover:text-blue-100 text-lg leading-none"
+        >
           ✕
         </button>
       </div>
@@ -695,6 +699,17 @@ function GameChat({
 
 // Quick-reaction bar — a fixed row of tappable emoji, cheap and fast during a
 // live round (no text entry, no moderation surface).
+// Screen readers announce the raw glyph's Unicode name (often unhelpfully
+// verbose) unless given a real label — one per emote, matching EMOTES' order.
+const EMOTE_LABEL: Record<string, string> = {
+  "👏": "Clapping",
+  "😂": "Laughing",
+  "😱": "Shocked",
+  "🔥": "Fire",
+  "🤔": "Thinking",
+  "😭": "Crying",
+};
+
 function EmoteBar({ onSend }: { onSend: (emoji: string) => void }) {
   return (
     <div className="fixed bottom-4 left-4 z-40 flex gap-1 bg-shell border border-[color:var(--hairline)] rounded-full px-2 py-1.5 shadow-xl">
@@ -703,7 +718,8 @@ function EmoteBar({ onSend }: { onSend: (emoji: string) => void }) {
           key={e}
           onClick={() => onSend(e)}
           className="text-xl leading-none w-8 h-8 grid place-items-center rounded-full hover:bg-shell-panel transition-colors"
-          title="Send a reaction"
+          title={`React with ${EMOTE_LABEL[e] ?? e}`}
+          aria-label={`React with ${EMOTE_LABEL[e] ?? e}`}
         >
           {e}
         </button>

@@ -183,6 +183,7 @@ export default function LiveEntryPage() {
                 <button
                   key={m}
                   onClick={() => setMode(m)}
+                  aria-pressed={mode === m}
                   className={`rounded-md py-2 font-display tracking-wide transition-colors ${
                     mode === m ? "bg-gold text-board-deep" : "text-blue-200/70 hover:text-blue-100"
                   }`}
@@ -293,6 +294,7 @@ export default function LiveEntryPage() {
                   <button
                     key={s}
                     onClick={() => setSource(s)}
+                    aria-pressed={source === s}
                     className={`rounded-md py-2 text-sm font-display tracking-wide transition-colors ${
                       source === s ? "bg-gold text-board-deep" : "text-blue-200/70 hover:text-blue-100"
                     }`}
@@ -340,6 +342,7 @@ export default function LiveEntryPage() {
                   <button
                     key={ms}
                     onClick={() => setAnswerMs(ms)}
+                    aria-pressed={answerMs === ms}
                     className={`rounded-md py-2 text-sm font-display tracking-wide transition-colors ${
                       answerMs === ms ? "bg-gold text-board-deep" : "bg-board-deep text-blue-200/70 hover:text-blue-100"
                     }`}
@@ -363,6 +366,7 @@ export default function LiveEntryPage() {
                   <button
                     key={s}
                     onClick={() => setScoringMode(s)}
+                    aria-pressed={scoringMode === s}
                     className={`rounded-md py-2 text-sm font-display tracking-wide transition-colors ${
                       scoringMode === s ? "bg-gold text-board-deep" : "text-blue-200/70 hover:text-blue-100"
                     }`}
@@ -392,6 +396,7 @@ export default function LiveEntryPage() {
                   <button
                     key={s}
                     onClick={() => setPickMode(s)}
+                    aria-pressed={pickMode === s}
                     className={`rounded-md py-2 text-sm font-display tracking-wide transition-colors ${
                       pickMode === s ? "bg-gold text-board-deep" : "text-blue-200/70 hover:text-blue-100"
                     }`}

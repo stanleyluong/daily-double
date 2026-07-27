@@ -18,6 +18,7 @@ export default function FilterPills<T extends string>({
         <button
           key={o.value}
           type="button"
+          aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
           className={`font-display text-sm tracking-wide px-3.5 py-1.5 rounded-full border transition-colors ${
             value === o.value

@@ -146,6 +146,7 @@ export default function NavBar() {
               <Link
                 key={t.href}
                 href={t.href}
+                aria-current={active ? "page" : undefined}
                 className={`relative px-3.5 py-2 font-display text-lg tracking-wide transition-colors ${
                   active ? "text-gold" : "text-blue-200/60 hover:text-blue-100"
                 }`}
@@ -237,6 +238,7 @@ export default function NavBar() {
             <>
               <Link
                 href="/history"
+                aria-current={isActive(pathname, "/history") ? "page" : undefined}
                 className={`truncate max-w-[12rem] underline-offset-2 hover:underline ${
                   isActive(pathname, "/history") ? "text-gold" : "text-blue-200/85 hover:text-gold"
                 }`}
@@ -283,6 +285,7 @@ export default function NavBar() {
               <Link
                 key={t.href}
                 href={t.href}
+                aria-current={active && !isSettingsBack ? "page" : undefined}
                 onClick={(e) => {
                   if (isSettingsBack) {
                     e.preventDefault();

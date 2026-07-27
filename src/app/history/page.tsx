@@ -285,6 +285,7 @@ function MyScoresPageInner() {
                   {SORT_COLUMNS.map((col) => (
                     <th
                       key={col.key}
+                      aria-sort={sortKey === col.key ? (sortDesc ? "descending" : "ascending") : "none"}
                       className={`px-4 py-3 ${col.align === "right" ? "text-right" : "text-left"}`}
                     >
                       <button

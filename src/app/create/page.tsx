@@ -153,6 +153,7 @@ function CreateBoardPageInner() {
                   <button
                     key={r}
                     onClick={() => setRounds(r)}
+                    aria-pressed={on}
                     className={`rounded-lg border px-4 py-3 text-left transition-colors ${
                       on
                         ? "border-gold bg-board-deep/60"

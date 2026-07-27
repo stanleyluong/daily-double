@@ -81,6 +81,7 @@ export default function SettingsPage() {
                 <button
                   key={o.value}
                   onClick={() => choose(o.value)}
+                  aria-pressed={on}
                   className={`w-full text-left flex items-start gap-3 rounded-lg border px-4 py-3 transition-colors ${
                     on ? "border-gold bg-board-deep/60" : "border-board bg-board-deep/30 hover:border-blue-300/40"
                   }`}

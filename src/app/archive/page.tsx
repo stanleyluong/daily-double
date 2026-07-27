@@ -276,7 +276,7 @@ function ArchivePageInner() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-board-deep/60">
-                  <th className="text-left px-4 py-3">
+                  <th className="text-left px-4 py-3" aria-sort={asc ? "ascending" : "descending"}>
                     <button
                       onClick={() => setAsc((v) => !v)}
                       className="font-display tracking-wide text-gold uppercase text-xs hover:opacity-80"
