@@ -52,7 +52,7 @@ export async function searchHistorical(opts: SearchHistoricalOptions = {}): Prom
   const { kind = "all", offset = 0, limit = 150, dateFrom, dateTo } = opts;
   const q = (opts.query ?? "").trim().toLowerCase();
 
-  const [historicalSnap, dailySnap, customSnap] = await Promise.all([
+  const [historicalSnap, dailySnap, customSnap, dailyBoardIds] = await Promise.all([
     kind === "all" || kind === "historical"
       ? db().collection(HISTORICAL_BOARDS).select("showNumber", "categoryTitles", "categoriesLower").get()
       : null,
@@ -60,11 +60,20 @@ export async function searchHistorical(opts: SearchHistoricalOptions = {}): Prom
     kind === "all" || kind === "custom"
       ? db().collection(CUSTOM_BOARDS).select("name", "categoryTitles", "createdAt").get()
       : null,
+    // ID-only, no per-doc read — used below to skip a historical row whose
+    // date collides with a daily board's (getBoardForDate always resolves
+    // that date to the daily board, so the historical one would be an
+    // unreachable duplicate row with the same key). Fetched unconditionally
+    // since a `kind=historical` search still needs it even when dailySnap
+    // above is skipped.
+    db().collection(DAILY_BOARDS).listDocuments(),
   ]);
+  const dailyDates = new Set(dailyBoardIds.map((ref) => ref.id));
 
   const rows: HistoricalSummary[] = [];
 
   for (const doc of historicalSnap?.docs ?? []) {
+    if (dailyDates.has(doc.id)) continue;
     const cats = (doc.get("categoryTitles") as string[] | undefined) ?? [];
     if (q) {
       const lower = (doc.get("categoriesLower") as string[] | undefined) ?? cats.map((c) => c.toLowerCase());

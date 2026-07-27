@@ -180,11 +180,25 @@ async function main() {
     console.log(`Already have ${existingGameIds.size} games — those will be skipped without fetching.`);
   }
 
+  // jeopardyBoards (our own daily AI board) and historicalBoards (real
+  // episodes) are both keyed by plain calendar date. getBoardForDate() always
+  // checks jeopardyBoards first, so a historical episode written over a date
+  // that already has a daily board would be permanently unreachable/shadowed
+  // — and duplicate the row in the Archive list (same `date`, two kinds).
+  // Only matters for recent dates (J-Archive transcribes near-live now), but
+  // check every run since "recent" moves every day.
+  let dailyBoardDates = new Set();
+  if (!dry) {
+    const dailyDocs = await db.collection("jeopardyBoards").listDocuments();
+    dailyBoardDates = new Set(dailyDocs.map((d) => d.id));
+  }
+
   const from = Number(arg("from") ?? arg("game"));
   const count = Number(arg("count") ?? 1);
   let ok = 0,
     skip = 0,
-    known_ = 0;
+    known_ = 0,
+    collided = 0;
   for (let gid = from; gid < from + count; gid++) {
     if (existingGameIds.has(gid)) {
       known_++;
@@ -195,18 +209,26 @@ async function main() {
       const board = parseGame(html, gid);
       if (dry) {
         console.log(`game ${gid}: ${board.airDate} — ${board.categoryTitles.length} categories`);
+        ok++;
+      } else if (dailyBoardDates.has(board.airDate)) {
+        // Still counts toward the rate-limit sleep below — we already spent
+        // the request fetching+parsing this game before learning its date.
+        console.log(`· ${gid} skipped: ${board.airDate} already has a daily AI board (would be unreachable)`);
+        collided++;
       } else {
         await db.collection("historicalBoards").doc(board.airDate).set(board, { merge: true });
         console.log(`✓ ${gid} → ${board.airDate}`);
+        ok++;
       }
-      ok++;
     } catch (e) {
       console.log(`· ${gid} skipped: ${e.message}`);
       skip++;
     }
     await sleep(DELAY_MS);
   }
-  console.log(`\nDone. ${ok} imported, ${skip} skipped (unavailable/incomplete), ${known_} already had.`);
+  console.log(
+    `\nDone. ${ok} imported, ${skip} skipped (unavailable/incomplete), ${collided} skipped (date collision with a daily board), ${known_} already had.`
+  );
 }
 
 main().catch((e) => {
