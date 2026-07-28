@@ -75,6 +75,9 @@ function ArchivePageInner() {
   // Picking a board for an existing lobby (came from "Browse Archive" on
   // /live/{code}) rather than browsing to start a fresh game.
   const forGame = searchParams.get("forGame");
+  // Picking a board to run in classroom host mode (came from /host) — the row
+  // action routes to /host/{key} instead of creating a live lobby.
+  const hostMode = searchParams.get("host") === "1";
   // Filter state initializes from (and writes back to) the URL, so a filtered
   // view survives refresh and can be shared/bookmarked (/archive?kind=custom).
   const urlKind = searchParams.get("kind");
@@ -137,6 +140,10 @@ function ArchivePageInner() {
   // of creating a brand new game.
   const playBoard = async (date: string) => {
     if (!user) return setShowAuth(true);
+    if (hostMode) {
+      router.push(`/host/${date}`);
+      return;
+    }
     setStarting(date);
     setPickError(null);
     try {
@@ -288,11 +295,17 @@ function ArchivePageInner() {
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 md:px-8 py-10">
         <header className="text-center mb-8">
           <h1 className="font-display text-4xl md:text-5xl tracking-wider text-gold">
-            {forGame ? `Choose a Board for Game ${forGame}` : "Jeopardy! Archive"}
+            {forGame
+              ? `Choose a Board for Game ${forGame}`
+              : hostMode
+                ? "Choose a Board to Host"
+                : "Jeopardy! Archive"}
           </h1>
           <p className="text-blue-200/70 mt-2 max-w-xl mx-auto">
             {forGame ? (
               "Pick any real episode, AI daily board, or custom board — your lobby will use it instead of the random pick."
+            ) : hostMode ? (
+              "Pick any real episode, AI daily board, or custom board to run for your class or group."
             ) : (
               <>
                 Real episodes from the show&apos;s history, every AI-generated daily board, and custom boards other
@@ -302,10 +315,10 @@ function ArchivePageInner() {
             )}
           </p>
           <Link
-            href={forGame ? `/live/${forGame}` : "/"}
+            href={forGame ? `/live/${forGame}` : hostMode ? "/host" : "/"}
             className="inline-block mt-3 text-gold/80 hover:text-gold underline"
           >
-            {forGame ? "← Back to lobby" : "← Today's board"}
+            {forGame ? "← Back to lobby" : hostMode ? "← Back to host setup" : "← Today's board"}
           </Link>
           {!forGame && (
             <div className="mt-5">
@@ -317,7 +330,9 @@ function ArchivePageInner() {
                 {surprising ? "Finding a board…" : "🎲 Surprise me"}
               </button>
               <p className="text-xs text-blue-200/60 mt-2">
-                Drops you into a random real episode you haven&apos;t played.
+                {hostMode
+                  ? "Hosts a random real episode you haven't played."
+                  : "Drops you into a random real episode you haven't played."}
               </p>
             </div>
           )}
@@ -489,7 +504,7 @@ function ArchivePageInner() {
                           disabled={starting !== null}
                           className="inline-block text-center font-display tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-4 py-1.5 rounded whitespace-nowrap disabled:opacity-50"
                         >
-                          {starting === b.date ? "…" : forGame ? "Select" : "Play"}
+                          {starting === b.date ? "…" : forGame ? "Select" : hostMode ? "Host" : "Play"}
                         </button>
                       </td>
                     </tr>

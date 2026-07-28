@@ -28,21 +28,28 @@ const OPTIONS = [
     body: "Name up to 6 categories and Claude writes a full round of clues for you on the spot — anything you can dream up.",
     cta: "Create a board",
   },
+  {
+    href: "/host",
+    badge: "Classroom",
+    title: "Host on a Screen",
+    body: "Run a game for a class or group off one screen — split into teams, put it on a projector, read clues aloud, and keep score. No student sign-ins.",
+    cta: "Host a game",
+  },
 ];
 
 export default function PlayChooserPage() {
   return (
     <div className="flex flex-col flex-1 min-h-screen">
-      <main className="flex-1 w-full max-w-4xl mx-auto px-4 md:px-8 py-12">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 md:px-8 py-12">
         <header className="text-center mb-10">
           <h1 className="font-display text-4xl md:text-5xl tracking-wider text-gold">Choose a Board</h1>
-          <p className="text-blue-200/70 mt-2">Three ways to play, solo or with friends.</p>
+          <p className="text-blue-200/70 mt-2">Play solo, with friends, or host a game for the room.</p>
           <Link href="/" className="inline-block mt-3 text-gold/80 hover:text-gold underline">
             ← Back
           </Link>
         </header>
 
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {OPTIONS.map((o) => (
             <Link
               key={o.href}
