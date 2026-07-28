@@ -941,8 +941,11 @@ export async function judgeAnswer(
   const message = await client().messages.create({
     model: JUDGE_MODEL,
     max_tokens: 512,
+    // No `effort` here: Haiku 4.5 (JUDGE_MODEL) rejects the effort parameter
+    // with a 400, and it's already a fast, low-cost model so there's nothing
+    // to dial down. Opus/Sonnet accept it, which is why this only surfaced
+    // after judging moved to Haiku.
     output_config: {
-      effort: "low",
       format: { type: "json_schema", schema: JUDGE_SCHEMA },
     },
     system:
@@ -978,8 +981,11 @@ export async function judgeAppeal(
   const message = await client().messages.create({
     model: JUDGE_MODEL,
     max_tokens: 512,
+    // No `effort` here: Haiku 4.5 (JUDGE_MODEL) rejects the effort parameter
+    // with a 400, and it's already a fast, low-cost model so there's nothing
+    // to dial down. Opus/Sonnet accept it, which is why this only surfaced
+    // after judging moved to Haiku.
     output_config: {
-      effort: "low",
       format: { type: "json_schema", schema: JUDGE_SCHEMA },
     },
     system:
