@@ -212,7 +212,13 @@ async function generateCategories(
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const message = await client().messages.create({
       model: GENERATION_MODEL,
-      max_tokens: 1024,
+      // Generous ceiling on purpose: Sonnet's structured-output (json_schema)
+      // mode burns far more tokens than the visible JSON, and a cap near the
+      // expected size makes it thrash and consume the whole budget (→ truncated
+      // JSON, "Unterminated string" parse errors). With headroom it finishes
+      // cleanly in a fraction of the tokens. You're only billed for tokens
+      // actually generated, so the high ceiling is free.
+      max_tokens: 4096,
       output_config: { format: { type: "json_schema", schema: CATEGORIES_SCHEMA } },
       system:
         "You are the head writer for a Jeopardy!-style trivia game. You write clever, varied boards for a general audience.",
@@ -269,7 +275,7 @@ async function generateClues(
 ): Promise<{ clue: string; answer: string; acceptable: string[] }[]> {
   const message = await client().messages.create({
     model: GENERATION_MODEL,
-    max_tokens: 2048,
+    max_tokens: 4096, // headroom for structured output — see generateCategories
     output_config: { format: { type: "json_schema", schema: CLUES_SCHEMA } },
     system:
       "You are the head writer for a Jeopardy!-style trivia game. Your clues are factually accurate, unambiguous, and fun.",
@@ -314,7 +320,7 @@ async function regenerateClue(
 ): Promise<{ clue: string; answer: string; acceptable: string[] }> {
   const message = await client().messages.create({
     model: GENERATION_MODEL,
-    max_tokens: 512,
+    max_tokens: 4096, // headroom for structured output — see generateCategories
     output_config: { format: { type: "json_schema", schema: SINGLE_CLUE_SCHEMA } },
     system:
       "You are the head writer for a Jeopardy!-style trivia game. Your clues are factually accurate, unambiguous, and fun.",
@@ -487,7 +493,7 @@ async function generateFinalJeopardy(
 ): Promise<FinalClue> {
   const message = await client().messages.create({
     model: GENERATION_MODEL,
-    max_tokens: 1024,
+    max_tokens: 4096, // headroom for structured output — see generateCategories
     output_config: { format: { type: "json_schema", schema: FINAL_SCHEMA } },
     system:
       "You are the head writer for a Jeopardy!-style trivia game. You write the single hardest, most memorable clue of the day for the Final Jeopardy round.",
@@ -945,7 +951,10 @@ export function roundTopValue(board: Board, roundIndex: number): number {
 // it's already a fast, low-cost model, so there's nothing to dial down.
 async function runJudge(system: string, userContent: string): Promise<{ correct: boolean; comment: string }> {
   const params = {
-    max_tokens: 512,
+    // Headroom so neither Haiku nor the Sonnet fallback thrashes near a tight
+    // cap on structured output (see generateCategories). The verdict is tiny,
+    // so actual usage — and cost — stays low regardless of the ceiling.
+    max_tokens: 2048,
     output_config: { format: { type: "json_schema" as const, schema: JUDGE_SCHEMA } },
     system,
     messages: [{ role: "user" as const, content: userContent }],
