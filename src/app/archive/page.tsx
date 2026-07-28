@@ -153,6 +153,26 @@ function ArchivePageInner() {
     }
   };
 
+  // Pick a random real episode the player hasn't done yet (server-side, across
+  // all ~9,000 — not just the loaded page) and drop straight into it.
+  const [surprising, setSurprising] = useState(false);
+  const surpriseMe = async () => {
+    if (!user) return setShowAuth(true);
+    setSurprising(true);
+    setPickError(null);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch("/api/surprise-board", { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      if (!res.ok || !data.key) throw new Error(data.error ?? "Couldn't pick a board.");
+      await playBoard(data.key as string);
+    } catch (e) {
+      setPickError(e instanceof Error ? e.message : "Couldn't pick a board.");
+    } finally {
+      setSurprising(false);
+    }
+  };
+
   interface Filters {
     q: string;
     k: ArchiveKindFilter;
@@ -287,6 +307,20 @@ function ArchivePageInner() {
           >
             {forGame ? "← Back to lobby" : "← Today's board"}
           </Link>
+          {!forGame && (
+            <div className="mt-5">
+              <button
+                onClick={surpriseMe}
+                disabled={surprising || starting !== null}
+                className="font-display text-lg tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2.5 rounded disabled:opacity-50"
+              >
+                {surprising ? "Finding a board…" : "🎲 Surprise me"}
+              </button>
+              <p className="text-xs text-blue-200/60 mt-2">
+                Drops you into a random real episode you haven&apos;t played.
+              </p>
+            </div>
+          )}
         </header>
         {pickError && <p className="text-center text-red-300 text-sm mb-4">{pickError}</p>}
 
