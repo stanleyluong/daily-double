@@ -10,6 +10,11 @@ import { db } from "@/lib/firebaseAdmin";
 // "is this response acceptable for this clue."
 const GENERATION_MODEL = "claude-sonnet-5";
 const JUDGE_MODEL = "claude-haiku-4-5";
+// Used only if the primary judge model errors (an API incompatibility like the
+// Haiku effort-param 400, or a transient failure). A judged answer is worth a
+// pricier call rather than blocking the player mid-game — one model's outage
+// degrades to costlier judging instead of taking the whole game down.
+const JUDGE_FALLBACK_MODEL = "claude-sonnet-5";
 
 export interface Clue {
   id: string;
@@ -933,38 +938,42 @@ export function roundTopValue(board: Board, roundIndex: number): number {
 // clue/answer/acceptable-only) rather than the full interfaces, so the
 // Final Jeopardy clue — which has no `id`/`value`/`dailyDouble` — can reuse
 // this without being force-fit into the grid-clue shape.
+// Runs a judge request against JUDGE_MODEL, falling back once to
+// JUDGE_FALLBACK_MODEL if the primary errors, so a single model's failure
+// (e.g. the Haiku effort-param 400) degrades to a pricier judgment instead of
+// blocking the answer. No `effort` param: Haiku 4.5 rejects it with a 400, and
+// it's already a fast, low-cost model, so there's nothing to dial down.
+async function runJudge(system: string, userContent: string): Promise<{ correct: boolean; comment: string }> {
+  const params = {
+    max_tokens: 512,
+    output_config: { format: { type: "json_schema" as const, schema: JUDGE_SCHEMA } },
+    system,
+    messages: [{ role: "user" as const, content: userContent }],
+  };
+  try {
+    return parseJson(await client().messages.create({ model: JUDGE_MODEL, ...params }));
+  } catch (error) {
+    console.error(`Judge model ${JUDGE_MODEL} failed; retrying on ${JUDGE_FALLBACK_MODEL}:`, error);
+    return parseJson(await client().messages.create({ model: JUDGE_FALLBACK_MODEL, ...params }));
+  }
+}
+
 export async function judgeAnswer(
   category: { title: string },
   clue: { clue: string; answer: string; acceptable: string[] },
   playerAnswer: string
 ): Promise<{ correct: boolean; comment: string }> {
-  const message = await client().messages.create({
-    model: JUDGE_MODEL,
-    max_tokens: 512,
-    // No `effort` here: Haiku 4.5 (JUDGE_MODEL) rejects the effort parameter
-    // with a 400, and it's already a fast, low-cost model so there's nothing
-    // to dial down. Opus/Sonnet accept it, which is why this only surfaced
-    // after judging moved to Haiku.
-    output_config: {
-      format: { type: "json_schema", schema: JUDGE_SCHEMA },
-    },
-    system:
-      "You judge answers for a Jeopardy!-style trivia game. Be lenient the way a human host is: accept last names alone, obvious misspellings, missing articles, answers with or without the \"what is / who is\" framing, and answers that contain the essential words of the correct response even if reordered. Exception: when the category is about rhyme, wordplay, spelling, sequence, or word order, the order IS the answer, so a reordered response is wrong. Reject answers that are genuinely a different thing, too vague, or hedged lists of guesses. Your comment is one short, playful sentence addressed to the player — never reveal information beyond whether they were right and the correct answer.",
-    messages: [
-      {
-        role: "user",
-        content: `Category: ${category.title}
+  return runJudge(
+    "You judge answers for a Jeopardy!-style trivia game. Be lenient the way a human host is: accept last names alone, obvious misspellings, missing articles, answers with or without the \"what is / who is\" framing, and answers that contain the essential words of the correct response even if reordered. Exception: when the category is about rhyme, wordplay, spelling, sequence, or word order, the order IS the answer, so a reordered response is wrong. Reject answers that are genuinely a different thing, too vague, or hedged lists of guesses. Your comment is one short, playful sentence addressed to the player — never reveal information beyond whether they were right and the correct answer.",
+    `Category: ${category.title}
 Clue: ${clue.clue}
 Correct answer: ${clue.answer}
 Also acceptable: ${clue.acceptable.length ? clue.acceptable.join("; ") : "(none listed)"}
 
 Player's response: ${JSON.stringify(playerAnswer)}
 
-Was the player correct?`,
-      },
-    ],
-  });
-  return parseJson<{ correct: boolean; comment: string }>(message);
+Was the player correct?`
+  );
 }
 
 // Second-opinion pass for an appealed ruling. The player is contesting a
@@ -978,22 +987,9 @@ export async function judgeAppeal(
   reason = ""
 ): Promise<{ correct: boolean; comment: string }> {
   const cleanReason = (reason ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
-  const message = await client().messages.create({
-    model: JUDGE_MODEL,
-    max_tokens: 512,
-    // No `effort` here: Haiku 4.5 (JUDGE_MODEL) rejects the effort parameter
-    // with a 400, and it's already a fast, low-cost model so there's nothing
-    // to dial down. Opus/Sonnet accept it, which is why this only surfaced
-    // after judging moved to Haiku.
-    output_config: {
-      format: { type: "json_schema", schema: JUDGE_SCHEMA },
-    },
-    system:
-      "You are reviewing an APPEALED ruling in a Jeopardy!-style game — the player's answer was marked wrong and they're contesting it. They may include a reason explaining why they think they're right; weigh it fairly but don't accept a wrong answer just because they argue well. Reconsider generously and give the benefit of the doubt on genuinely close calls: if the response is a defensible match — a valid alternate name, phrasing, spelling, or close-enough form — rule it CORRECT. Only uphold the rejection if the answer is genuinely a different thing or clearly wrong (including a reordered answer when the category is about rhyme, wordplay, or sequence). Your comment is one short, friendly sentence explaining the appeal decision.",
-    messages: [
-      {
-        role: "user",
-        content: `Category: ${category.title}
+  return runJudge(
+    "You are reviewing an APPEALED ruling in a Jeopardy!-style game — the player's answer was marked wrong and they're contesting it. They may include a reason explaining why they think they're right; weigh it fairly but don't accept a wrong answer just because they argue well. Reconsider generously and give the benefit of the doubt on genuinely close calls: if the response is a defensible match — a valid alternate name, phrasing, spelling, or close-enough form — rule it CORRECT. Only uphold the rejection if the answer is genuinely a different thing or clearly wrong (including a reordered answer when the category is about rhyme, wordplay, or sequence). Your comment is one short, friendly sentence explaining the appeal decision.",
+    `Category: ${category.title}
 Clue: ${clue.clue}
 Correct answer: ${clue.answer}
 Also acceptable: ${clue.acceptable.length ? clue.acceptable.join("; ") : "(none listed)"}
@@ -1001,9 +997,6 @@ Also acceptable: ${clue.acceptable.length ? clue.acceptable.join("; ") : "(none 
 Player's response: ${JSON.stringify(playerAnswer)}
 Player's appeal reason: ${cleanReason ? JSON.stringify(cleanReason) : "(none given)"}
 
-On appeal, should this count as correct?`,
-      },
-    ],
-  });
-  return parseJson<{ correct: boolean; comment: string }>(message);
+On appeal, should this count as correct?`
+  );
 }
