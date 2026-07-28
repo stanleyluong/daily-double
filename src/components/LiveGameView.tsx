@@ -938,7 +938,60 @@ function LiveBoard({
   const [unrevealedValue, setUnrevealedValue] = useState<number | null>(null);
   if (!round) return <p className="text-center text-blue-200/60 py-10">Loading board…</p>;
   return (
-    <div className="w-full overflow-x-auto pb-2">
+    <>
+      {/* Mobile: the 6-column grid needs ~680px, so below md it's stacked
+          per-category strips instead of forcing a sideways scroll — mirrors the
+          solo board's mobile layout. Same pick/answered/unrevealed logic as the
+          grid below, just a compact single-column arrangement. */}
+      <div className="md:hidden space-y-1.5">
+        {round.categories.map((cat) => (
+          <div key={cat.title} className="bg-board-deep rounded-sm overflow-hidden">
+            <div className="p-3">
+              <span className="font-display tracking-wide text-sm leading-tight uppercase">{cat.title}</span>
+            </div>
+            <div className="grid grid-cols-5 gap-1.5 p-2 pt-0">
+              {cat.clues.map((clue, row) => {
+                if (clue.unrevealed) {
+                  return (
+                    <button
+                      key={clue.id}
+                      onClick={() => setUnrevealedValue(clue.value)}
+                      aria-label={`$${clue.value}, never aired on the original broadcast. Activate for details.`}
+                      className="rounded-sm min-h-[52px] flex flex-col items-center justify-center gap-0.5 border border-dashed border-blue-300/20 text-blue-200/40 active:text-blue-200/70 transition-colors"
+                    >
+                      <span className="font-display text-sm tracking-wide">${clue.value}</span>
+                      <span className="text-[8px] uppercase tracking-wide">Never aired</span>
+                    </button>
+                  );
+                }
+                const answeredM = game.answeredClueIds.includes(clue.id);
+                return (
+                  <button
+                    key={clue.id}
+                    disabled={answeredM || !canPick}
+                    onClick={() => onPick(clue.id)}
+                    aria-label={`$${clue.value}${answeredM ? ", answered" : ""}`}
+                    className={`rounded-sm min-h-[52px] flex items-center justify-center transition-colors ${
+                      answeredM
+                        ? "bg-board/20 cursor-default"
+                        : canPick
+                          ? "bg-board active:bg-board-deep cursor-pointer"
+                          : "bg-board/60 cursor-default"
+                    }`}
+                  >
+                    {!answeredM && (
+                      <span className="font-display text-base text-gold tracking-wide">${clue.value}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* md and up: the full 6-column grid */}
+      <div className="hidden md:block w-full overflow-x-auto pb-2">
       <div className="grid grid-cols-6 gap-1.5 w-full min-w-[680px]">
         {round.categories.map((cat) => (
           <div
@@ -987,10 +1040,11 @@ function LiveBoard({
           })
         )}
       </div>
+      </div>
       {unrevealedValue !== null && (
         <UnrevealedClueModal value={unrevealedValue} onClose={() => setUnrevealedValue(null)} />
       )}
-    </div>
+    </>
   );
 }
 
