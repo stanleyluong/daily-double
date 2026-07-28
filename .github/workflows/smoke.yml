@@ -1,0 +1,28 @@
+name: Model smoke test
+
+# Manual only — makes real Claude API calls (a few cents each), so it isn't run
+# on every push. Trigger it from the Actions tab before a deploy to catch a
+# model/param incompatibility (like the Haiku effort-param 400) that passes
+# typecheck and build but only fails at the real API.
+#
+# Requires an ANTHROPIC_API_KEY repository secret
+# (Settings → Secrets and variables → Actions).
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Smoke test the model calls
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        # Not `npm run smoke` — that script uses --env-file=.env.local, which
+        # doesn't exist in CI. The SDK reads ANTHROPIC_API_KEY straight from env.
+        run: node scripts/smoke-models.mjs
