@@ -202,12 +202,86 @@ function isLetterGimmickCategory(brief: CategoryBrief): boolean {
   return LETTER_GIMMICK_PATTERN.test(brief.title) || LETTER_GIMMICK_PATTERN.test(brief.theme);
 }
 
+// Rotating topic pool so a board's category *types* vary day to day and between
+// rounds, instead of always hitting the same few buckets (history / arts / pop
+// culture / wordplay). The date seeds a deterministic pick, so everyone still
+// gets the same board on a given day, but the required domains rotate across
+// days. (Sonnet doesn't support a `temperature` bump — it's deprecated on the
+// model — so prompt-level rotation is how we get variety.)
+const TOPIC_DOMAINS = [
+  "world history",
+  "U.S. history",
+  "geography & places",
+  "science & nature",
+  "space & astronomy",
+  "the human body & medicine",
+  "animals & the natural world",
+  "technology & inventions",
+  "literature & authors",
+  "poetry & language",
+  "art & architecture",
+  "classical or modern music",
+  "film",
+  "television",
+  "pop culture & celebrities",
+  "sports",
+  "games & hobbies",
+  "food & drink",
+  "mythology & folklore",
+  "world religions",
+  "business & brands",
+  "politics & world leaders",
+  "law & crime",
+  "money & economics",
+  "fashion & design",
+  "transportation",
+  "world cultures & holidays",
+] as const;
+
+// Wordplay is a Jeopardy! staple, but the *style* of the one wordplay category
+// rotates too so it isn't always "rhymes." All of these are framing-only (no
+// letter-mechanic gimmicks, which are banned separately).
+const WORDPLAY_STYLES = [
+  'rhyming answers (each answer rhymes with a given word)',
+  "puns or double meanings in the clue framing",
+  '"before & after" — two facts joined by an overlapping shared word',
+  "fill-in-the-blank famous phrases, titles, or sayings",
+  "two-word phrases or compound words sharing a theme",
+] as const;
+
+// Tiny deterministic PRNG (FNV-1a hash → mulberry32) driving a seeded shuffle,
+// so a given seed always yields the same pick but picks spread well across
+// seeds. Used to rotate the required topic domains per board.
+function seededPick<T>(arr: readonly T[], count: number, seed: string): T[] {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const rand = () => {
+    h += 0x6d2b79f5;
+    let t = Math.imul(h ^ (h >>> 15), 1 | h);
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, count);
+}
+
 async function generateCategories(
   date: string,
   roundLabel: string,
   harder: boolean,
   avoidCategories: CategoryBrief[] = []
 ): Promise<CategoryBrief[]> {
+  // Rotate which domains this board must cover (4 required + 1 wordplay + 1
+  // free = 6), seeded by date+round so it varies day to day and between rounds.
+  const domains = seededPick(TOPIC_DOMAINS, 4, `${date}|${roundLabel}`);
+  const wordplayStyle = seededPick(WORDPLAY_STYLES, 1, `${date}|${roundLabel}|wp`)[0];
   const MAX_ATTEMPTS = 3;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const message = await client().messages.create({
@@ -228,7 +302,8 @@ async function generateCategories(
           content: `Create exactly 6 categories for the ${roundLabel} round of the daily board of ${date}.
 
 Requirements:
-- A diverse mix across the 6: at least one from history/geography/science, one from arts/literature, one from pop culture/sports/food, and one LIGHT wordplay category — rhymes, puns, or "before & after" — where the answers are ordinary knowledge and the wordplay is just the framing.
+- Cover a varied spread of subjects. For THIS board, make sure each of these domains is represented by at least one of the 6 categories: ${domains.join("; ")}. Pick the remaining categories from any OTHER domains you like (not a repeat of those) to round out the board.
+- Include exactly one LIGHT wordplay category in this style: ${wordplayStyle}. The answers should be ordinary knowledge and the wordplay is just the framing.
 - HARD BAN on letter-mechanic gimmicks: no "hidden word inside another word" (e.g. a body part concealed in a longer word), no anagrams, no "every answer contains/starts with/shares a specific letter", no acrostics. These require exact letter-by-letter matches that are easy to get wrong, and produce broken clues (e.g. claiming "disavow" hides "shin" when it does not). When unsure, make it a straightforward knowledge category instead.
 - Titles are short and punchy, puns welcome, ALL CAPS not required.
 - For each category, write a one-sentence "theme" that a clue writer would use to stay on-brief. For any wordplay category, state the gimmick precisely and ensure every clue's answer genuinely satisfies it.
