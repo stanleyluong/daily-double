@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 import { db } from "@/lib/firebaseAdmin";
 
@@ -839,6 +839,75 @@ export function isValidBoardKey(key: string): boolean {
 const BOARDS = "jeopardyBoards";
 const HISTORICAL_BOARDS = "historicalBoards";
 const CUSTOM_BOARDS = "customBoards";
+
+export interface BoardMeta {
+  key: string;
+  kind: "daily" | "historical" | "custom";
+  date: string; // real YYYY-MM-DD for daily/historical; "" for custom
+  categoryTitles: string[];
+  showNumber?: number; // historical only
+  name?: string; // custom only
+}
+
+// Lightweight board summary for SEO metadata — a single projected read (just
+// the fields a title/description needs), not the full board with clues.
+// Resolves the key the same way getBoardForDate does.
+// Projected single-doc read: a field projection (.select) is only available on
+// a query, not a DocumentReference, so we query the collection by document id.
+async function projectDoc(
+  collection: string,
+  id: string,
+  fields: string[]
+): Promise<FirebaseFirestore.QueryDocumentSnapshot | null> {
+  const snap = await db()
+    .collection(collection)
+    .where(FieldPath.documentId(), "==", id)
+    .select(...fields)
+    .limit(1)
+    .get();
+  return snap.empty ? null : snap.docs[0];
+}
+
+export async function getBoardMeta(key: string): Promise<BoardMeta | null> {
+  if (key.startsWith("custom-")) {
+    const doc = await projectDoc(CUSTOM_BOARDS, key.slice(7), ["categoryTitles", "name"]);
+    if (!doc) return null;
+    return {
+      key,
+      kind: "custom",
+      date: "",
+      categoryTitles: (doc.get("categoryTitles") as string[] | undefined) ?? [],
+      name: (doc.get("name") as string | null | undefined) ?? undefined,
+    };
+  }
+  if (key.startsWith("hist-")) {
+    const doc = await projectDoc(HISTORICAL_BOARDS, key, ["categoryTitles", "showNumber"]);
+    if (!doc) return null;
+    return {
+      key,
+      kind: "historical",
+      date: key.slice(-10),
+      categoryTitles: (doc.get("categoryTitles") as string[] | undefined) ?? [],
+      showNumber: Number(doc.get("showNumber") ?? 0) || undefined,
+    };
+  }
+  // Plain date: daily board first, then historical (matches getBoardForDate).
+  const daily = await projectDoc(BOARDS, key, ["categoryTitles"]);
+  if (daily) {
+    return { key, kind: "daily", date: key, categoryTitles: (daily.get("categoryTitles") as string[] | undefined) ?? [] };
+  }
+  const hist = await projectDoc(HISTORICAL_BOARDS, key, ["categoryTitles", "showNumber"]);
+  if (hist) {
+    return {
+      key,
+      kind: "historical",
+      date: key,
+      categoryTitles: (hist.get("categoryTitles") as string[] | undefined) ?? [],
+      showNumber: Number(hist.get("showNumber") ?? 0) || undefined,
+    };
+  }
+  return null;
+}
 
 // Boards are immutable once written, so a per-instance memo is safe and keeps
 // judge calls from re-reading Firestore on every answer.
