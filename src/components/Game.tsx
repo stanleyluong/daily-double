@@ -193,6 +193,9 @@ export default function Game({ date }: { date?: string }) {
   const [appealUsed, setAppealUsed] = useState(false);
   const [appealing, setAppealing] = useState(false);
   const [appealReason, setAppealReason] = useState("");
+  // Per-clue "report a bad clue" state (reset each time a clue opens).
+  const [reporting, setReporting] = useState(false);
+  const [reported, setReported] = useState(false);
   const [showRecap, setShowRecap] = useState(false);
   const [clueStats, setClueStats] = useState<Record<string, { correct: number; wrong: number; passed: number }> | null>(
     null
@@ -523,6 +526,35 @@ export default function Game({ date }: { date?: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [phase]);
 
+  // Flag a wrong, broken, or inappropriate clue for review. Best-effort and
+  // low-friction (one click, no required reason); captures the clue text/answer
+  // so the report stands alone. Failures are swallowed — a flag isn't worth an
+  // error toast — but the UI still confirms so the player feels heard.
+  const reportClue = useCallback(async () => {
+    if (!board || !active || reporting || reported) return;
+    setReporting(true);
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (user) headers.Authorization = `Bearer ${await user.getIdToken()}`;
+      await fetch("/api/report-clue", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          date: board.date,
+          clueId: active.id,
+          category: active.categoryTitle,
+          clue: active.clue,
+          correctAnswer: verdict?.correctAnswer ?? "",
+        }),
+      });
+    } catch {
+      // ignore — best-effort
+    } finally {
+      setReported(true);
+      setReporting(false);
+    }
+  }, [board, active, verdict, user, reporting, reported]);
+
   // Contest a wrong ruling — one appeal per game. A granted appeal flips the
   // clue to correct and swings the score by 2× its value (undo the −, add the
   // +). Whether granted or denied, the appeal is spent.
@@ -658,6 +690,8 @@ export default function Game({ date }: { date?: string }) {
     setReviewing(false);
     setAppealReason("");
     setJudgeFailed(false);
+    setReported(false);
+    setReporting(false);
   }, []);
 
   // After a ruling, Enter (or Escape) returns to the board without reaching
@@ -1643,8 +1677,17 @@ export default function Game({ date }: { date?: string }) {
 
                     <div className="flex items-center justify-between gap-3 mt-6">
                       <div className="min-h-[2.5rem] flex items-center">
-                        {verdict.outcome === "wrong" && appealUsed && (
-                          <span className="text-xs text-blue-200/60">No appeals left</span>
+                        {reported ? (
+                          <span className="text-xs text-blue-200/60">✓ Reported — thanks</span>
+                        ) : (
+                          <button
+                            onClick={reportClue}
+                            disabled={reporting}
+                            title="Flag a wrong, broken, or inappropriate clue for review"
+                            className="text-xs text-blue-200/50 hover:text-blue-200/80 underline underline-offset-2 disabled:opacity-50"
+                          >
+                            {reporting ? "Reporting…" : "⚑ Report clue"}
+                          </button>
                         )}
                       </div>
                       <button
