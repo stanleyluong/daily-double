@@ -476,7 +476,14 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
                   See the board →
                 </button>
               </div>
-              <Reveal reveal={lastReveal} players={game.players} uid={uid} nameFor={nameFor} />
+              <Reveal
+                reveal={lastReveal}
+                players={game.players}
+                uid={uid}
+                nameFor={nameFor}
+                boardKey={game.boardDate}
+                clueText={findClueText(round, lastReveal.clueId)?.clue ?? ""}
+              />
             </div>
           ) : (
             <div>
@@ -541,6 +548,8 @@ export default function LiveGameView({ gameId }: { gameId: string }) {
             uid={uid}
             nameFor={nameFor}
             onContinue={() => run(() => liveContinue(user!, game.id))}
+            boardKey={game.boardDate}
+            clueText={findClueText(round, game.reveal.clueId)?.clue ?? ""}
           />
         )}
 
@@ -1203,13 +1212,41 @@ function Reveal({
   uid,
   nameFor,
   onContinue,
+  boardKey,
+  clueText,
 }: {
   reveal: NonNullable<import("@/lib/liveTypes").LiveGame["reveal"]>;
   players: { uid: string; name: string }[];
   uid: string | null;
   nameFor: (id: string) => string;
   onContinue?: () => void;
+  boardKey: string;
+  clueText: string;
 }) {
+  const [reported, setReported] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const report = async () => {
+    if (reported || reporting) return;
+    setReporting(true);
+    try {
+      await fetch("/api/report-clue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: boardKey,
+          clueId: r.clueId,
+          category: r.categoryTitle,
+          clue: clueText,
+          correctAnswer: r.correctAnswer,
+        }),
+      });
+    } catch {
+      // best-effort
+    } finally {
+      setReported(true);
+      setReporting(false);
+    }
+  };
   return (
     <div className="max-w-2xl mx-auto bg-board rounded-lg shadow-2xl p-6 md:p-8 text-center">
       <p className="font-display tracking-wider text-gold uppercase text-sm mb-1">
@@ -1266,6 +1303,21 @@ function Reveal({
           Continue →
         </button>
       )}
+
+      <div className="mt-4">
+        {reported ? (
+          <span className="text-xs text-blue-200/60">✓ Reported — thanks</span>
+        ) : (
+          <button
+            onClick={report}
+            disabled={reporting}
+            title="Flag a wrong, broken, or inappropriate clue for review"
+            className="text-xs text-blue-200/50 hover:text-blue-200/80 underline underline-offset-2 disabled:opacity-50"
+          >
+            {reporting ? "Reporting…" : "⚑ Report clue"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
