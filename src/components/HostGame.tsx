@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Board, Clue } from "@/lib/jeopardy";
 import { formatBoardDate, formatMoney } from "@/lib/format";
+import { playSound } from "@/lib/sounds";
 import { useAuth } from "@/components/AuthProvider";
 import { useModalA11y } from "@/lib/useModalA11y";
 
@@ -150,6 +151,21 @@ export default function HostGame({ boardKey }: { boardKey: string }) {
     setTeams((ts) => ts.map((t) => (t.id === teamId ? { ...t, score: t.score + delta } : t)));
   }, []);
 
+  // Undo: a stack of resolved clues with the net score change each caused, so
+  // the host can revert a misclick live (award to the wrong team, mis-mark) in
+  // front of the room. Cleared on round change so it stays scoped to the board
+  // on screen. Transient (not persisted) — undo is for immediate mistakes.
+  const [history, setHistory] = useState<{ clueId: string; deltas: Record<string, number> }[]>([]);
+  const pendingRef = useRef<Record<string, number>>({});
+
+  const applyDelta = useCallback(
+    (teamId: string, delta: number) => {
+      adjustScore(teamId, delta);
+      pendingRef.current[teamId] = (pendingRef.current[teamId] ?? 0) + delta;
+    },
+    [adjustScore]
+  );
+
   const closeClue = useCallback(() => {
     setActive(null);
     setRevealed(false);
@@ -158,13 +174,41 @@ export default function HostGame({ boardKey }: { boardKey: string }) {
     setDdWagerInput("");
   }, []);
 
+  // Resolve the open clue: record its net deltas + who got it, then close.
+  const commit = useCallback(
+    (clueId: string, awardedTeamId: string | null) => {
+      const deltas = { ...pendingRef.current };
+      pendingRef.current = {};
+      setAnswered((a) => ({ ...a, [clueId]: { awardedTeamId } }));
+      setHistory((h) => [...h, { clueId, deltas }]);
+      closeClue();
+    },
+    [closeClue]
+  );
+
+  const undoLast = useCallback(() => {
+    setHistory((h) => {
+      if (h.length === 0) return h;
+      const last = h[h.length - 1];
+      Object.entries(last.deltas).forEach(([teamId, delta]) => adjustScore(teamId, -delta));
+      setAnswered((a) => {
+        const next = { ...a };
+        delete next[last.clueId];
+        return next;
+      });
+      return h.slice(0, -1);
+    });
+  }, [adjustScore]);
+
   const openClue = (clue: Clue, categoryTitle: string) => {
     if (clue.unrevealed || clue.id in answered) return;
+    pendingRef.current = {};
     setActive({ clue, categoryTitle });
     setRevealed(false);
     setDdTeamId(null);
     setDdWager(null);
     setDdWagerInput("");
+    if (clue.dailyDouble) playSound("dailydouble");
   };
 
   // Amount at stake for the open clue: the wager for a Daily Double, else face value.
@@ -172,24 +216,23 @@ export default function HostGame({ boardKey }: { boardKey: string }) {
 
   const markCorrect = (teamId: string) => {
     if (!active) return;
-    adjustScore(teamId, stake);
-    setAnswered((a) => ({ ...a, [active.clue.id]: { awardedTeamId: teamId } }));
-    closeClue();
+    applyDelta(teamId, stake);
+    playSound("correct");
+    commit(active.clue.id, teamId);
   };
   const markWrong = (teamId: string) => {
     if (!active) return;
-    adjustScore(teamId, -stake);
+    applyDelta(teamId, -stake);
+    playSound("wrong");
     // Daily Double: only the wagering team answers, so a wrong ends the clue.
     if (active.clue.dailyDouble) {
-      setAnswered((a) => ({ ...a, [active.clue.id]: { awardedTeamId: null } }));
-      closeClue();
+      commit(active.clue.id, null);
     }
     // Otherwise the clue stays open (deduct/steal) so another team can take it.
   };
   const markNoOne = () => {
     if (!active) return;
-    setAnswered((a) => ({ ...a, [active.clue.id]: { awardedTeamId: null } }));
-    closeClue();
+    commit(active.clue.id, null);
   };
 
   const teamById = (id: string | null) => teams.find((t) => t.id === id) ?? null;
@@ -282,6 +325,7 @@ export default function HostGame({ boardKey }: { boardKey: string }) {
               setFinalWagers({});
               setFinalResults({});
               setFinalPhase("wager");
+              setHistory([]);
               setStage("round");
             }}
             className="font-display text-lg tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2.5 rounded"
@@ -305,19 +349,37 @@ export default function HostGame({ boardKey }: { boardKey: string }) {
       <main className="flex-1 w-full max-w-6xl mx-auto px-3 md:px-6 py-5">
         <Scoreboard teams={teams} roundName={round?.name ?? ""} boardDate={board.date} />
 
+        {history.length > 0 && !active && (
+          <div className="mt-2 text-center">
+            <button
+              onClick={undoLast}
+              className="font-display text-sm tracking-wide text-blue-200/70 hover:text-gold border border-[color:var(--hairline)] rounded px-4 py-1.5 transition-colors"
+            >
+              ↩ Undo last clue
+            </button>
+          </div>
+        )}
+
         {roundDone ? (
           <div className="mt-6 bg-board-deep/60 border border-board rounded-lg p-10 text-center">
             <p className="font-display text-3xl tracking-wide text-gold mb-6">{round?.name} complete!</p>
             {!isLastRound ? (
               <button
-                onClick={() => setRoundIndex((r) => r + 1)}
+                onClick={() => {
+                  setHistory([]);
+                  setRoundIndex((r) => r + 1);
+                }}
                 className="font-display text-2xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-8 py-3 rounded"
               >
                 Continue to {board.rounds[roundIndex + 1]?.name} →
               </button>
             ) : hasFinal ? (
               <button
-                onClick={() => setStage("final")}
+                onClick={() => {
+                  setHistory([]);
+                  playSound("final");
+                  setStage("final");
+                }}
                 className="font-display text-2xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-8 py-3 rounded"
               >
                 Go to Final Jeopardy →
