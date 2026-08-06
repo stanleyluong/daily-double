@@ -72,6 +72,8 @@ export default function HostGame({ boardKey }: { boardKey: string }) {
   const [ddWager, setDdWager] = useState<number | null>(null);
   const [ddWagerInput, setDdWagerInput] = useState("");
   const [revealed, setRevealed] = useState(false);
+  // Highlighted board cell for keyboard/presenter-clicker navigation.
+  const [focusedCell, setFocusedCell] = useState({ row: 0, col: 0 });
 
   // Final Jeopardy sub-phase (not persisted precisely; resumes at "wager" with
   // the entered wagers preserved).
@@ -237,6 +239,87 @@ export default function HostGame({ boardKey }: { boardKey: string }) {
 
   const teamById = (id: string | null) => teams.find((t) => t.id === id) ?? null;
 
+  // Keyboard / presenter-clicker control so the host can run the board from the
+  // front of the room. A ref holds the latest closure (bound once) so the
+  // handler always sees current state without re-attaching every render.
+  const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  keyRef.current = (e: KeyboardEvent) => {
+    if (stage !== "round") return;
+    const tag = (e.target as HTMLElement | null)?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return; // don't hijack the DD wager field
+
+    if (active) {
+      if (active.clue.dailyDouble && ddWager === null) return; // DD wager step is mouse-driven
+      if (!revealed) {
+        if (e.key === "Enter" || e.key === "r" || e.key === "R" || e.key === " ") {
+          e.preventDefault();
+          setRevealed(true);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          closeClue();
+        }
+        return;
+      }
+      // Revealed & awarding. Daily Double: only the wagering team answered, so
+      // Enter/Y = correct, N = wrong. Regular clue: a number key awards that
+      // team; 0/N = no one got it.
+      if (active.clue.dailyDouble) {
+        if (!ddTeamId) return;
+        if (e.key === "Enter" || e.key === "y" || e.key === "Y") {
+          e.preventDefault();
+          markCorrect(ddTeamId);
+        } else if (e.key === "n" || e.key === "N" || e.key === "0") {
+          e.preventDefault();
+          markWrong(ddTeamId);
+        }
+        return;
+      }
+      if (/^[1-9]$/.test(e.key)) {
+        const idx = Number(e.key) - 1;
+        if (idx < teams.length) {
+          e.preventDefault();
+          markCorrect(teams[idx].id);
+        }
+      } else if (e.key === "0" || e.key === "n" || e.key === "N") {
+        e.preventDefault();
+        markNoOne();
+      }
+      return;
+    }
+
+    // Board (no clue open).
+    if (e.key === "u" || e.key === "U") {
+      e.preventDefault();
+      undoLast();
+      return;
+    }
+    const cols = round?.categories.length ?? 6;
+    const clamp = (dr: number, dc: number) => {
+      e.preventDefault();
+      setFocusedCell((fc) => ({
+        row: Math.min(4, Math.max(0, fc.row + dr)),
+        col: Math.min(cols - 1, Math.max(0, fc.col + dc)),
+      }));
+    };
+    if (e.key === "ArrowUp") clamp(-1, 0);
+    else if (e.key === "ArrowDown") clamp(1, 0);
+    else if (e.key === "ArrowLeft") clamp(0, -1);
+    else if (e.key === "ArrowRight") clamp(0, 1);
+    else if (e.key === "Enter" || e.key === " ") {
+      const cat = round?.categories[focusedCell.col];
+      const clue = cat?.clues[focusedCell.row];
+      if (cat && clue && !clue.unrevealed && !(clue.id in answered)) {
+        e.preventDefault();
+        openClue(clue, cat.title);
+      }
+    }
+  };
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => keyRef.current(e);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   // ---------------- render ----------------
 
   if (loadError) {
@@ -326,6 +409,7 @@ export default function HostGame({ boardKey }: { boardKey: string }) {
               setFinalResults({});
               setFinalPhase("wager");
               setHistory([]);
+              setFocusedCell({ row: 0, col: 0 });
               setStage("round");
             }}
             className="font-display text-lg tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-6 py-2.5 rounded"
@@ -349,14 +433,19 @@ export default function HostGame({ boardKey }: { boardKey: string }) {
       <main className="flex-1 w-full max-w-6xl mx-auto px-3 md:px-6 py-5">
         <Scoreboard teams={teams} roundName={round?.name ?? ""} boardDate={board.date} />
 
-        {history.length > 0 && !active && (
-          <div className="mt-2 text-center">
-            <button
-              onClick={undoLast}
-              className="font-display text-sm tracking-wide text-blue-200/70 hover:text-gold border border-[color:var(--hairline)] rounded px-4 py-1.5 transition-colors"
-            >
-              ↩ Undo last clue
-            </button>
+        {!active && !roundDone && (
+          <div className="mt-2 flex items-center justify-center gap-4">
+            {history.length > 0 && (
+              <button
+                onClick={undoLast}
+                className="font-display text-sm tracking-wide text-blue-200/70 hover:text-gold border border-[color:var(--hairline)] rounded px-4 py-1.5 transition-colors"
+              >
+                ↩ Undo last clue
+              </button>
+            )}
+            <span className="hidden md:inline text-[11px] text-blue-200/40">
+              ⌨ Arrows move · Enter opens · while open: Enter/R reveals · 1–3 awards · N no one · U undo
+            </span>
           </div>
         )}
 
@@ -367,6 +456,7 @@ export default function HostGame({ boardKey }: { boardKey: string }) {
               <button
                 onClick={() => {
                   setHistory([]);
+                  setFocusedCell({ row: 0, col: 0 });
                   setRoundIndex((r) => r + 1);
                 }}
                 className="font-display text-2xl tracking-wider bg-gold hover:bg-gold-soft text-board-deep px-8 py-3 rounded"
@@ -407,7 +497,7 @@ export default function HostGame({ boardKey }: { boardKey: string }) {
                 </div>
               ))}
               {Array.from({ length: 5 }).map((_, row) =>
-                round?.categories.map((cat) => {
+                round?.categories.map((cat, col) => {
                   const clue = cat.clues[row];
                   if (!clue) return <div key={`${cat.title}-${row}`} />;
                   if (clue.unrevealed) {
@@ -423,6 +513,7 @@ export default function HostGame({ boardKey }: { boardKey: string }) {
                   }
                   const done = answered[clue.id];
                   const awardTeam = done ? teamById(done.awardedTeamId) : null;
+                  const focused = focusedCell.row === row && focusedCell.col === col;
                   return (
                     <button
                       key={clue.id}
@@ -430,7 +521,7 @@ export default function HostGame({ boardKey }: { boardKey: string }) {
                       disabled={!!done}
                       className={`rounded-sm min-h-[80px] flex items-center justify-center transition-colors ${
                         done ? "bg-board/20 cursor-default" : "bg-board hover:bg-board-deep cursor-pointer"
-                      }`}
+                      } ${focused && !done ? "ring-2 ring-inset ring-gold" : ""}`}
                       style={awardTeam ? { background: `${awardTeam.color}22` } : undefined}
                     >
                       {done ? (
